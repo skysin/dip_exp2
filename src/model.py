@@ -4,7 +4,6 @@ import os
 import time
 import tensorflow as tf
 import numpy as np
-import vgg16
 from ops import *
 from utils import *
 from dataset import DataSet
@@ -78,7 +77,7 @@ class transfer_model(object):
         """ Loss Function """
 
         # get fc output of alexnet
-        self.alexnet = AlexNet(self.inputs, keep_prob=1.0, num_classes=1000, skip_layer)
+        self.alexnet = AlexNet(self.inputs, keep_prob=1.0, num_classes=1000, skip_layer=[])
         logits = self.classifier(self.alexnet.pool5, is_training=True, reuse=False)
         prob = tf.nn.softmax(logits)
         # 
@@ -184,10 +183,10 @@ class transfer_model(object):
         for idx in range(0, self.predict_num_batches):
             inputs, labels = self.predict_set.next_batch()
             prob = self.sess.run([self.test_prob], feed_dict={self.inputs: inputs})
-            print prob
-            print labels
-            print self.label_name[np.argmax(prob)], self.label_name[np.argmax(labels)]
-            print "============" 
+            #print prob
+            #print labels
+            #print self.label_name[np.argmax(prob)], self.label_name[np.argmax(labels)]
+            #print "============" 
         
     @property
     def model_dir(self):
