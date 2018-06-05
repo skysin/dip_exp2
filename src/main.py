@@ -8,10 +8,11 @@ import argparse
 def parse_args():
     desc = "Tensorflow implementation of GAN collections"
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('--dataset', type=str, default='BLSD', choices=['BLSD', 'kaggle'],
-                        help='The name of dataset')
+    # parser.add_argument('--dataset', type=str, default='BLSD', choices=['BLSD', 'kaggle'],
+    #                     help='The name of dataset')
     parser.add_argument('--epoch', type=int, default=800, help='The number of epochs to run')
     parser.add_argument('--batch_size', type=int, default=4, help='The size of batch')
+    parser.add_argument('--predict', help='Is predicting', dest='predict', action='store_true')
     parser.set_defaults(test=False)
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoint',
                         help='Directory name to save the checkpoints')
@@ -26,13 +27,13 @@ def parse_args():
 """checking arguments"""
 def check_args(args):
     # --checkpoint_dir
-#    check_folder(args.checkpoint_dir)
+    check_folder(args.checkpoint_dir)
 
     # --result_dir
- #   check_folder(args.result_dir)
+    check_folder(args.result_dir)
 
     # --result_dir
-  #  check_folder(args.log_dir)
+    check_folder(args.log_dir)
 
     # --epoch
     assert args.epoch >= 1, 'number of epochs must be larger than or equal to one'

@@ -8,34 +8,37 @@ import vgg16
 from ops import *
 from utils import *
 from dataset import DataSet
+from alexnet import AlexNet
 
 class transfer_model(object):
     model_name = "transfer_model"     # name for checkpoint
 
-    def __init__(self, sess, epoch, batch_size, dataset_name, checkpoint_dir, result_dir, log_dir, learning_rate = 0.00001, beta1=0.5):
+    def __init__(self, sess, epoch, batch_size, checkpoint_dir, log_dir, learning_rate = 0.00001, beta1=0.5):
         self.sess = sess
-        self.dataset_name = dataset_name
-        self.result_dir = result_dir
+        self.keep_prob = 1.0
+        #self.dataset_name = dataset_name
+        #self.result_dir = result_dir
         self.log_dir = log_dir
         self.epoch = epoch
         self.batch_size = batch_size
         self.beta1 = beta1
-        if dataset_name == 'BLSD':
-            self.label_dim = 8
-            self.train_set = DataSet("../dataset/BLSD/img", self.batch_size, self.label_dim)
-            self.log_dir = log_dir + "/BLSD"
-            self.checkpoint_dir = checkpoint_dir + "/BLSD"
-            self.predict_set = DataSet("../predictset/BLSD", 1, self.label_dim)
-            self.label_name = ["amusement", "anger", "awe", "contentment", "disgust", "excitement", "fear", "sadness"]
-            #self.pred_set = DataSet("../BLSD_predset/img", self.batch_size)
-        elif dataset_name == 'kaggle':
-            self.label_dim = 7
-            self.train_set = DataSet("../dataset/kaggle/training", self.batch_size, self.label_dim)
-            self.test_set = DataSet("../dataset/kaggle/test", 1, self.label_dim)
-            self.log_dir = log_dir + "/kaggle"
-            self.checkpoint_dir = checkpoint_dir + "/kaggle"
-            self.predict_set = DataSet("../predictset/kaggle", 1, self.label_dim)
-            self.label_name = ["anger", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
+        self.label_dim = 50
+        # if dataset_name == 'BLSD':
+        #     self.label_dim = 8
+        #     self.train_set = DataSet("../dataset/BLSD/img", self.batch_size, self.label_dim)
+        #     self.log_dir = log_dir + "/BLSD"
+        #     self.checkpoint_dir = checkpoint_dir + "/BLSD"
+        #     self.predict_set = DataSet("../predictset/BLSD", 1, self.label_dim)
+        #     self.label_name = ["amusement", "anger", "awe", "contentment", "disgust", "excitement", "fear", "sadness"]
+        #     #self.pred_set = DataSet("../BLSD_predset/img", self.batch_size)
+        # elif dataset_name == 'kaggle':
+        #     self.label_dim = 7
+        #     self.train_set = DataSet("../dataset/kaggle/training", self.batch_size, self.label_dim)
+        #     self.test_set = DataSet("../dataset/kaggle/test", 1, self.label_dim)
+        #     self.log_dir = log_dir + "/kaggle"
+        #     self.checkpoint_dir = checkpoint_dir + "/kaggle"
+        #     self.predict_set = DataSet("../predictset/kaggle", 1, self.label_dim)
+        #     self.label_name = ["anger", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
 
         # parameters
         self.input_height = 224
@@ -50,12 +53,11 @@ class transfer_model(object):
         # get number of batches for a single epoch
         self.num_batches = self.train_set.total_batches
         self.test_num_batches = self.test_set.total_batches
-        self.predict_num_batches = self.predict_set.total_batches
 
     def classifier(self, x, is_training=True, reuse=False):
         # Arichitecture : VGG16(CONV7x7x512_P-FC4096_BR-FC4097_BR-FC[label_dim]-softmax)
         with tf.variable_scope("classifier", reuse=reuse):
-            net = tf.reshape(x, [-1, 7*7*512])
+            net = tf.reshape(x, [-1, 6*6*256])
             net = tf.nn.relu(bn(linear(net, 4096, scope='fc1'), is_training=is_training, scope='bn1'))
             net = tf.nn.relu(bn(linear(net, 4096, scope='fc2'), is_training=is_training, scope='bn2'))
             out = linear(net, self.label_dim, scope='fc3')
@@ -75,11 +77,9 @@ class transfer_model(object):
 
         """ Loss Function """
 
-        # get prob of vgg_pool5
-        vgg = vgg16.Vgg16()
-        vgg.build(self.inputs)
-        print "pool5", vgg.pool5.shape
-        logits = self.classifier(vgg.pool5, is_training=True, reuse=False)
+        # get fc output of alexnet
+        self.alexnet = AlexNet(self.inputs, keep_prob=1.0, num_classes=1000, skip_layer)
+        logits = self.classifier(self.alexnet.pool5, is_training=True, reuse=False)
         prob = tf.nn.softmax(logits)
         # 
         self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=self.labels))
@@ -109,6 +109,7 @@ class transfer_model(object):
 
         # initialize all variables
         tf.global_variables_initializer().run()
+        self.alexnet.load_initial_weights(self.sess)
 
         # saver to save model
         self.saver = tf.train.Saver()
@@ -166,8 +167,6 @@ class transfer_model(object):
                     acc += 1
             print("Epoch: [%2d] acc: %.8f" \
                       % (epoch, (acc + 0.0) / self.test_num_batches))
-
-
 
         # save model for final step
         self.save(self.checkpoint_dir, counter)

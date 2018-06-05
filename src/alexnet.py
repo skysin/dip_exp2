@@ -79,6 +79,7 @@ class AlexNet(object):
 
         # Loop over all layer names stored in the weights dict
         for op_name in weights_dict:
+            print("load weight layer:", op_name)
 
             # Check if layer should be trained from scratch
             if op_name not in self.SKIP_LAYER:
