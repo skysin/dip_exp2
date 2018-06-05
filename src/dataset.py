@@ -4,16 +4,14 @@ import cv2
 import random
 
 
-class DataSet(object):
-    def __init__(self, data_dir, batch_size, label_dim, max_size=-1):
-        self.DATA_SIZE = 224
+class BaseDataSet(object):
+    def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
+        self.data_size = data_size
         self.data_dir = data_dir
         self.batch_size = batch_size
         self.max_size = max_size
         self.gen_image_list()
         self.shuffle_data()
-        self.cur_index = 0
-        self.end_index = 0
         self.label_dim = label_dim
 
     def gen_image_list(self):
@@ -44,16 +42,26 @@ class DataSet(object):
         # cv2.imwrite(image_path, img_data)
         # img_data = cv2.imread(image_path)
         # height, weight, channels = img_data.shape
-
         #original_img = cv2.resize(img_data, (self.DATA_SIZE, self.DATA_SIZE))
         original_img = cv2.resize(
-            img_data, (self.DATA_SIZE, self.DATA_SIZE)) / 255.0
+            img_data, (self.data_size, self.data_size)) / 255.0
         original_img = original_img * 2 - 1
         return original_img, image_path.split("_")[0][-2:]
 
     def shuffle_data(self):
         # test set should not be shuffled
         random.shuffle(self.image_list)
+
+    def next_batch(self):
+        pass
+
+
+class DataSet(BaseDataSet, object):
+    def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
+        BaseDataSet.__init__(self, data_dir, batch_size,
+                             label_dim, data_size, max_size)
+        self.cur_index = 0
+        self.end_index = 0
 
     def next_batch(self):
         self.end_index = min(
@@ -63,7 +71,7 @@ class DataSet(object):
         for i in range(self.cur_index, self.end_index):
             # print(self.image_list[i])
             original_img, label_img = self.read_image(self.image_list[i])
-            # print("label_img: ", label_img)
+            print("label_img: ", label_img)
             array_original_img.append(original_img)
             label = np.zeros([self.label_dim])
             label[int(label_img) - 1] = 1
@@ -76,9 +84,26 @@ class DataSet(object):
 
         return np.array(array_original_img), np.array(array_label)
 
+# class KNNDataSet(BaseDataSet):
+#     def __init__(self, data_dir, batch_size, label_dim, data_size=-1, max_size=-1):
+#         super(KNNDataSet, self).__init__(
+#             data_dir, batch_size, label_dim, data_size=-1, max_size=-1)
+
+
+class ProtoDataSet(BaseDataSet):
+    def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
+        BaseDataSet.__init__(self, data_dir, batch_size,
+                             label_dim, data_size, max_size)
+
+    def next_batch(self, way, shot, query):
+        pass
+
+    def rand_fc7_data(self, way):
+        pass
+
 
 if __name__ == "__main__":
-    DATA_SET = DataSet("./training", 2, 50, 500)
+    DATA_SET = DataSet("./training", 2, 50, 500, 227)
     for i in range(10):
         original_img, label = DATA_SET.next_batch()
         # cv2.imwrite("hahaha.jpg", original_img[0])
