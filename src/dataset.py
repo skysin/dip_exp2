@@ -71,7 +71,7 @@ class DataSet(BaseDataSet, object):
         for i in range(self.cur_index, self.end_index):
             # print(self.image_list[i])
             original_img, label_img = self.read_image(self.image_list[i])
-            print("label_img: ", label_img)
+            #print("label_img: ", label_img)
             array_original_img.append(original_img)
             label = np.zeros([self.label_dim])
             label[int(label_img) - 1] = 1
