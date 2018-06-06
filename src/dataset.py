@@ -43,10 +43,10 @@ class BaseDataSet(object):
         # img_data = cv2.imread(image_path)
         # height, weight, channels = img_data.shape
         #original_img = cv2.resize(img_data, (self.DATA_SIZE, self.DATA_SIZE))
-        original_img = cv2.resize(
-            img_data, (self.data_size, self.data_size)) / 255.0
-        original_img = original_img * 2 - 1
-        return original_img, image_path.split("_")[0][-2:]
+        img_data = cv2.resize(img_data, (self.data_size, self.data_size)).astype(np.float32)
+        vgg_mean = np.array([103.939, 116.779, 123.68])
+        img_data =  img_data - vgg_mean
+        return img_data, image_path.split("_")[0][-2:]
 
     def shuffle_data(self):
         # test set should not be shuffled
@@ -86,7 +86,7 @@ class DataSet(BaseDataSet, object):
 
 # class KNNDataSet(BaseDataSet):
 #     def __init__(self, data_dir, batch_size, label_dim, data_size=-1, max_size=-1):
-#         super(KNNDataSet, self).__init__(
+#         super(KNNDataSet,     self).__init__(
 #             data_dir, batch_size, label_dim, data_size=-1, max_size=-1)
 
 
@@ -103,7 +103,7 @@ class ProtoDataSet(BaseDataSet):
 
 
 if __name__ == "__main__":
-    DATA_SET = DataSet("./training", 2, 50, 500, 227)
+    DATA_SET = DataSet("../data/training", 2, 50, 227)
     for i in range(10):
         original_img, label = DATA_SET.next_batch()
         # cv2.imwrite("hahaha.jpg", original_img[0])

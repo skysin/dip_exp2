@@ -1,3 +1,5 @@
 src/training/*
 .vscode/*
 src/__pycache__/*
+data/training/
+*.npy
