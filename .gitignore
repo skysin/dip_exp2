@@ -1,0 +1,3 @@
+src/training/*
+.vscode/*
+src/__pycache__/*
