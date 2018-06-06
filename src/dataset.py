@@ -2,6 +2,7 @@ import numpy as np
 import os
 import cv2
 import random
+import fileinput
 
 
 class BaseDataSet(object):
@@ -13,6 +14,8 @@ class BaseDataSet(object):
         self.gen_image_list()
         self.shuffle_data()
         self.label_dim = label_dim
+        self.cur_index = 0
+        self.end_index = 0
 
     def gen_image_list(self):
         self.image_list = []
@@ -60,8 +63,6 @@ class DataSet(BaseDataSet, object):
     def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
         BaseDataSet.__init__(self, data_dir, batch_size,
                              label_dim, data_size, max_size)
-        self.cur_index = 0
-        self.end_index = 0
 
     def next_batch(self):
         self.end_index = min(
@@ -94,12 +95,56 @@ class ProtoDataSet(BaseDataSet):
     def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
         BaseDataSet.__init__(self, data_dir, batch_size,
                              label_dim, data_size, max_size)
+        self.correct_map = []
+        self.label_set = [[] for i in range(1000)]  # 1000个label的样本list
+        self.classes_list = [i for i in range(1000)]  # 指向label的key
+        self.total_samples = 0  # 总样本数
+        self.init_correct_map()
+        self.shuffle_classes_list()
+        self.init_label_set()
+        self.fc7
 
     def next_batch(self, way, shot, query):
-        pass
+        self.end_index = min(
+            [self.cur_index + way, 1000])
+        result_shot = [[] for i in range(way)]
+        array_label = []
+        result_query = [[] for i in range(way)]
+        total_num = shot + query
+        for i in range(self.cur_index, self.end_index):
+            goal_set = self.label_set[self.classes_list[i]]
+            array_label.append(self.correct_map[self.classes_list[i]])
+            if total_num > len(goal_set):
+                total_num = len(goal_set)
+            query_samples = []
+            shot_samples = random.sample(range(len(goal_set)), total_num)
+            for j in range(query):
+                query_samples.append(shot_samples.pop())
+            for j in shot_samples:
+                result_shot[i].append(self.fc7[j])
+            for j in query_samples:
+                result_query[i].append(self.fc7[j])
+        self.cur_index += way
+        if self.cur_index >= self.total_samples:
+            self.cur_index = 0
+            self.shuffle_classes_list()
+        # shape(way,shot,4096), shape(way,query,4096), shape(way,)
+        return np.array(result_shot), np.array(result_query), np.array(array_label)
 
-    def rand_fc7_data(self, way):
-        pass
+    def init_label_set(self):
+        labels = np.load('../label.npy').tolist()
+        self.fc7 = np.load('../fc7.npy')
+        for i, val in enumerate(labels):
+            self.label_set[val].append(i)
+        self.total_samples = len(labels)
+
+    def shuffle_classes_list(self):
+        random.shuffle(self.classes_list)
+
+    def init_correct_map(self):
+        for line in fileinput.input("../correct.txt"):
+            self.correct_map.append(int(line.split()[1]))
+
 
 
 if __name__ == "__main__":
