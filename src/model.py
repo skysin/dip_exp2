@@ -18,8 +18,9 @@ class transfer_model(object):
         #self.dataset_name = dataset_name
         #self.result_dir = result_dir
         self.log_dir = log_dir
+        self.checkpoint_dir = checkpoint_dir
         self.epoch = epoch
-        self.batch_size = batch_size
+        self.batch_size = 1
         self.beta1 = beta1
         self.label_dim = 50
         # if dataset_name == 'BLSD':
@@ -38,12 +39,12 @@ class transfer_model(object):
         #     self.checkpoint_dir = checkpoint_dir + "/kaggle"
         #     self.predict_set = DataSet("../predictset/kaggle", 1, self.label_dim)
         #     self.label_name = ["anger", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
-
+        self.train_set = DataSet("../data/training", self.batch_size, self.label_dim)
         # parameters
-        self.input_height = 224
-        self.input_width = 224
-        self.output_height = 224
-        self.output_width = 224
+        self.input_height = 227
+        self.input_width = 227
+        #self.output_height = 224
+        #self.output_width = 224
         self.c_dim = 3
 
         # train
@@ -51,7 +52,7 @@ class transfer_model(object):
         
         # get number of batches for a single epoch
         self.num_batches = self.train_set.total_batches
-        self.test_num_batches = self.test_set.total_batches
+        #self.test_num_batches = self.test_set.total_batches
 
     def classifier(self, x, is_training=True, reuse=False):
         # Arichitecture : VGG16(CONV7x7x512_P-FC4096_BR-FC4097_BR-FC[label_dim]-softmax)
@@ -69,10 +70,10 @@ class transfer_model(object):
 
         """ Graph Input """
         # images
-        self.inputs = tf.placeholder(tf.float32, [None] + image_dims, name='input_images')
+        self.inputs = tf.placeholder(tf.float32, [self.batch_size] + image_dims, name='input_images')
 
         # labels
-        self.labels = tf.placeholder(tf.float32, [None, self.label_dim], name='label')
+        self.labels = tf.placeholder(tf.float32, [self.batch_size, self.label_dim], name='label')
 
         """ Loss Function """
 
@@ -94,12 +95,13 @@ class transfer_model(object):
                                       .minimize(self.loss, var_list=vars)
         """ Testing """
         # for test
-        test_logits = self.classifier(vgg.pool5, is_training=False, reuse=True)
+        
+        test_logits = self.classifier(self.alexnet.pool5, is_training=False, reuse=True)
         self.test_prob = tf.nn.softmax(test_logits)
         
         correct_pred = tf.equal(tf.argmax(self.test_prob), tf.argmax(self.labels))
         self.acc = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
-
+        
         """ Summary """
         self.loss_sum = tf.summary.scalar("loss", self.loss)
         self.acc_sum = tf.summary.scalar("acc", self.acc)
@@ -140,7 +142,7 @@ class transfer_model(object):
 
                 # update network
                 _, loss_summary_str, acc_summary_str, loss = self.sess.run([self.optim, self.loss_sum, self.acc_sum, self.loss],
-                                               feed_dict={self.inputs: inputs, self.labels: labels})
+                                               feed_dict={self.alexnet.X: inputs, self.labels: labels})
                 self.writer.add_summary(loss_summary_str, counter)
                 self.writer.add_summary(acc_summary_str, counter)
 
@@ -158,6 +160,8 @@ class transfer_model(object):
             self.save(self.checkpoint_dir, counter)
 
             '''Test'''
+
+            '''
             acc = 0
             for idx in range(0, self.test_num_batches):
                 inputs, labels = self.test_set.next_batch()
@@ -166,6 +170,7 @@ class transfer_model(object):
                     acc += 1
             print("Epoch: [%2d] acc: %.8f" \
                       % (epoch, (acc + 0.0) / self.test_num_batches))
+            '''
 
         # save model for final step
         self.save(self.checkpoint_dir, counter)
@@ -190,8 +195,8 @@ class transfer_model(object):
         
     @property
     def model_dir(self):
-        return "{}_{}_{}".format(
-            self.model_name, self.dataset_name,
+        return "{}_{}".format(
+            self.model_name,
             self.batch_size)
 
     def save(self, checkpoint_dir, step):

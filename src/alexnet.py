@@ -53,7 +53,7 @@ class AlexNet(object):
         # 5th Layer: Conv (w ReLu) -> Pool splitted into two groups
         conv5 = conv(conv4, 3, 3, 256, 1, 1, groups=2, name='conv5')
         pool5 = max_pool(conv5, 3, 3, 2, 2, padding='VALID', name='pool5')
-
+        self.pool5 = pool5
         # 6th Layer: Flatten -> FC (w ReLu) -> Dropout
         flattened = tf.reshape(pool5, [-1, 6*6*256])
         fc6 = fc(flattened, 6*6*256, 4096, name='fc6')
@@ -79,7 +79,6 @@ class AlexNet(object):
 
         # Loop over all layer names stored in the weights dict
         for op_name in weights_dict:
-            print("load weight layer:", op_name)
 
             # Check if layer should be trained from scratch
             if op_name not in self.SKIP_LAYER:

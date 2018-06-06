@@ -27,13 +27,12 @@ def parse_args():
 """checking arguments"""
 def check_args(args):
     # --checkpoint_dir
-    check_folder(args.checkpoint_dir)
+   # check_folder(args.checkpoint_dir)
 
     # --result_dir
-    check_folder(args.result_dir)
+    #check_folder(args.result_dir)
 
     # --result_dir
-    check_folder(args.log_dir)
 
     # --epoch
     assert args.epoch >= 1, 'number of epochs must be larger than or equal to one'
