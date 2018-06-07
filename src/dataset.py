@@ -1,3 +1,4 @@
+#coding=utf-8   
 import numpy as np
 import os
 import cv2
@@ -22,15 +23,23 @@ class BaseDataSet(object):
         self.total_images = 0
         for dir_name in os.listdir(self.data_dir):
             fi_d = os.path.join(self.data_dir, dir_name)
+            if not os.path.isdir(os.path.join(self.data_dir, dir_name)):
+                continue
             for file_name in os.listdir(fi_d):
                 if file_name.endswith("jpg"):
-                    # file_size = os.path.getsize(self.data_dir + "/" + file_name)
-                    # if file_size / 1024 < 5:
-                    #     continue
+                    if self.max_size > 0 and self.total_images >= self.max_size:
+                        break
                     self.image_list.append(dir_name + '/' + file_name)
                     self.total_images += 1
-                    if (self.max_size > 0 and self.total_images >= self.max_size):
-                        break
+        for file_name in os.listdir(self.data_dir):
+            if not os.path.isfile(os.path.join(self.data_dir, file_name)):
+                continue
+            if file_name.endswith("jpg"):
+                if self.max_size > 0 and self.total_images >= self.max_size:
+                    break
+                self.image_list.append(file_name)
+                self.total_images += 1
+            
         self.total_images = (self.total_images //
                              self.batch_size) * self.batch_size
 
@@ -39,17 +48,12 @@ class BaseDataSet(object):
         # self.total_batches -= 10
 
     def read_image(self, image_name):
-        image_path = os.path.join(self.data_dir, image_name)
+        image_path = self.data_dir + '/' + image_name
         img_data = cv2.imread(image_path)
-        # img_data = cv2.cvtColor(img_data, cv2.COLOR_BGR2GRAY)
-        # cv2.imwrite(image_path, img_data)
-        # img_data = cv2.imread(image_path)
-        # height, weight, channels = img_data.shape
-        #original_img = cv2.resize(img_data, (self.DATA_SIZE, self.DATA_SIZE))
         img_data = cv2.resize(img_data, (self.data_size, self.data_size)).astype(np.float32)
         vgg_mean = np.array([103.939, 116.779, 123.68])
         img_data =  img_data - vgg_mean
-        return img_data, image_path.split("_")[0][-2:]
+        return img_data, image_path.split("/")[-1].split('.')[0].split('_')[1]
 
     def shuffle_data(self):
         # test set should not be shuffled
@@ -147,7 +151,7 @@ class ProtoDataSet(BaseDataSet):
 
 
 if __name__ == "__main__":
-    DATA_SET = DataSet("../data/training", 2, 50, 227)
+    DATA_SET = DataSet("../data/train_augment", 2, 50, 227)
     for i in range(10):
         original_img, label = DATA_SET.next_batch()
         # cv2.imwrite("hahaha.jpg", original_img[0])

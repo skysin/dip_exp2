@@ -6,3 +6,6 @@ data/training/
 ProtoNet/training/*
 ProtoNet/*.txt
 ProtoNet/*.npy
+*.jpg
+*.tar
+*.pyc
