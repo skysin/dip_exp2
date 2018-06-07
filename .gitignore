@@ -4,3 +4,6 @@ src/__pycache__/*
 data/training/
 data/test/
 *.npy
+ProtoNet/training/*
+ProtoNet/*.txt
+ProtoNet/*.npy
