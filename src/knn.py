@@ -28,17 +28,15 @@ class KNN(object):
 
     def load_training_data(self, img_num):
         ds = DataSet(self.train_data_path, 1, self.class_num)
+        sess = tf.Session()
         self.inputs = tf.placeholder(tf.float32, [1, 227, 227, 3], name="input_image")
         self.labels = tf.placeholder(tf.float32, [1, 50], name='label')
         self.alexnet = AlexNet(self.inputs, keep_prob=1.0, num_classes=1000, skip_layer=[])
+        tf.global_variables_initializer().run()
+        self.alexnet.load_initial_weights(sess)
         for i in range(10):
             print(i)
             img, label = ds.next_batch()
-            #print(img.shape)
-            #print(label.shape)
-            sess = tf.Session()
-            self.alexnet.load_initial_weights(sess)
-            #print(sess.run([self.alexnet.fc7], feed_dict={self.alexnet.X: img, self.labels: label}))
             out1, out2, out3, out4, out5, out6, out7 = sess.run([self.alexnet.norm1, self.alexnet.norm2, self.alexnet.conv3, self.alexnet.conv4,
                             self.alexnet.pool5, self.alexnet.fc6, self.alexnet.fc7], feed_dict={self.alexnet.X: img, self.labels: label})
             '''
