@@ -28,45 +28,46 @@ class KNN(object):
 
     def load_training_data(self, img_num):
         ds = DataSet(self.train_data_path, 1, self.class_num)
-        sess = tf.Session()
-        self.inputs = tf.placeholder(tf.float32, [1, 227, 227, 3], name="input_image")
-        self.labels = tf.placeholder(tf.float32, [1, 50], name='label')
-        self.alexnet = AlexNet(self.inputs, keep_prob=1.0, num_classes=1000, skip_layer=[])
-        tf.global_variables_initializer().run()
-        self.alexnet.load_initial_weights(sess)
-        for i in range(10):
-            print(i)
-            img, label = ds.next_batch()
-            out1, out2, out3, out4, out5, out6, out7 = sess.run([self.alexnet.norm1, self.alexnet.norm2, self.alexnet.conv3, self.alexnet.conv4,
-                            self.alexnet.pool5, self.alexnet.fc6, self.alexnet.fc7], feed_dict={self.alexnet.X: img, self.labels: label})
-            '''
-            print(out1.shape)
-            print(out2.shape)
-            print(out3.shape)
-            print(out4.shape)
-            print(out5.shape)
-            print(out6.shape)
-            print(out7.shape)
-            
-            (1, 27, 27, 96)
-            (1, 13, 13, 256)
-            (1, 13, 13, 384)
-            (1, 13, 13, 384)
-            (1, 6, 6, 256)
-            (1, 4096)
-            (1, 4096)
-            '''
-            self.training_data[1].append(out1[0].reshape(1, 27 * 27 * 96)[0])
-            self.training_data[2].append(out2[0].reshape(1, 13 * 13 * 256)[0])
-            self.training_data[3].append(out3[0].reshape(1, 13 * 13 * 384)[0])
-            self.training_data[4].append(out4[0].reshape(1, 13 * 13 * 384)[0])
-            self.training_data[5].append(out5[0].reshape(1, 6 * 6 * 256)[0])
-            self.training_data[6].append(out6[0])
-            self.training_data[7].append(out7[0])
-            self.label_set.append(np.argmax(label, axis=1)[0])
-            
-            if (i + 1) % 10 == 0:
-                self.build_model()
+        #sess = tf.Session()
+        with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
+            self.inputs = tf.placeholder(tf.float32, [1, 227, 227, 3], name="input_image")
+            self.labels = tf.placeholder(tf.float32, [1, 50], name='label')
+            self.alexnet = AlexNet(self.inputs, keep_prob=1.0, num_classes=1000, skip_layer=[])
+            tf.global_variables_initializer().run()
+            self.alexnet.load_initial_weights(sess)
+            for i in range(10):
+                print(i)
+                img, label = ds.next_batch()
+                out1, out2, out3, out4, out5, out6, out7 = sess.run([self.alexnet.norm1, self.alexnet.norm2, self.alexnet.conv3, self.alexnet.conv4,
+                                self.alexnet.pool5, self.alexnet.fc6, self.alexnet.fc7], feed_dict={self.alexnet.X: img, self.labels: label})
+                '''
+                print(out1.shape)
+                print(out2.shape)
+                print(out3.shape)
+                print(out4.shape)
+                print(out5.shape)
+                print(out6.shape)
+                print(out7.shape)
+                
+                (1, 27, 27, 96)
+                (1, 13, 13, 256)
+                (1, 13, 13, 384)
+                (1, 13, 13, 384)
+                (1, 6, 6, 256)
+                (1, 4096)
+                (1, 4096)
+                '''
+                self.training_data[1].append(out1[0].reshape(1, 27 * 27 * 96)[0])
+                self.training_data[2].append(out2[0].reshape(1, 13 * 13 * 256)[0])
+                self.training_data[3].append(out3[0].reshape(1, 13 * 13 * 384)[0])
+                self.training_data[4].append(out4[0].reshape(1, 13 * 13 * 384)[0])
+                self.training_data[5].append(out5[0].reshape(1, 6 * 6 * 256)[0])
+                self.training_data[6].append(out6[0])
+                self.training_data[7].append(out7[0])
+                self.label_set.append(np.argmax(label, axis=1)[0])
+                
+                if (i + 1) % 10 == 0:
+                    self.build_model()
 
     def load_testing_data(self):
         pass
