@@ -98,7 +98,7 @@ class ProtoDataSet(BaseDataSet):
         self.correct_map = []
         self.label_set = [[] for i in range(1000)]  # 1000个label的样本list
         self.classes_list = [i for i in range(1000)]  # 指向label的key
-        self.total_samples = 0  # 总样本数
+        self.total_classes = 1000  # 总类别数
         self.init_correct_map()
         self.shuffle_classes_list()
         self.init_label_set()
@@ -125,7 +125,7 @@ class ProtoDataSet(BaseDataSet):
             for j in query_samples:
                 result_query[i].append(self.fc7[j])
         self.cur_index += way
-        if self.cur_index >= self.total_samples:
+        if self.cur_index >= self.total_classes:
             self.cur_index = 0
             self.shuffle_classes_list()
         # shape(way,shot,4096), shape(way,query,4096), shape(way,)
@@ -136,7 +136,6 @@ class ProtoDataSet(BaseDataSet):
         self.fc7 = np.load('../fc7.npy')
         for i, val in enumerate(labels):
             self.label_set[val].append(i)
-        self.total_samples = len(labels)
 
     def shuffle_classes_list(self):
         random.shuffle(self.classes_list)
