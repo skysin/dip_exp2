@@ -3,3 +3,6 @@ src/training/*
 src/__pycache__/*
 data/training/
 *.npy
+ProtoNet/training/*
+ProtoNet/*.txt
+ProtoNet/*.npy
