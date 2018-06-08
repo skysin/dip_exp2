@@ -18,6 +18,8 @@ def parse_args():
     parser.add_argument('--model_dir', type=str, default='models',
                         help='Directory name to save models')
     parser.add_argument('--predict', type=bool, default=False)
+    parser.add_argument('--lr', type=float, default=0.001)
+
 
     parser.add_argument('--way', type=int, default=50, metavar='WAY',
                         help='The number of ways in training')
@@ -54,6 +56,7 @@ def main():
         # declare instance for transfer model
 
         model = ProtoNet(sess,
+                learning_rate=args.lr,
                 epoch=args.epoch,
                 checkpoint_dir=args.checkpoint_dir,
                 log_dir=args.log_dir,                

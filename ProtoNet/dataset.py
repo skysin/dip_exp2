@@ -3,6 +3,7 @@ import os
 import cv2
 import random
 import fileinput
+from sklearn.decomposition import PCA 
 
 
 class BaseDataSet(object):
@@ -113,7 +114,7 @@ class ProtoDataSet(BaseDataSet):
         self.total_classes = 1000
         self.cur_index = 0
         self.init_correct_map()
-        self.shuffle_classes_list()
+        # self.shuffle_classes_list()
         self.init_label_set()
 
         if self.phase == 'TRAIN' and valid:
@@ -134,27 +135,29 @@ class ProtoDataSet(BaseDataSet):
             temp_total_num = total_num
             if temp_total_num > len(goal_set):
                 temp_total_num = len(goal_set)
-            # print '!', temp_total_num, self.shot, self.query
             array_label.append([i - self.cur_index] * self.query)
             query_samples = []
             shot_samples = random.sample(range(len(goal_set)), temp_total_num)
             for j in range(self.query):
                 query_samples.append(shot_samples.pop())
             for j in shot_samples:
-                result_shot[i - self.cur_index].append(self.fc7[j])
+                result_shot[i - self.cur_index].append(self.fc7[goal_set[j]])
             for j in query_samples:
-                result_query[i - self.cur_index].append(self.fc7[j])
+                result_query[i - self.cur_index].append(self.fc7[goal_set[j]])
         self.cur_index += self.way
         if self.cur_index >= self.total_classes:
             self.cur_index = 0
             self.shuffle_classes_list()
         # shape(way,shot,4096), shape(way,query,4096), shape(way,)
-        print np.array(result_shot).shape, np.array(result_query).shape, np.array(array_label).shape
         return np.array(result_shot), np.array(result_query), np.array(array_label)
 
     def init_label_set(self):
+        # pca_dim = 256
+
         labels = np.load('./label.npy').tolist()
         self.fc7 = np.load('./fc7.npy')
+        # pca = PCA(n_components=pca_dim)
+        # self.fc7 = pca.fit_transform(temp_fc7)
         for i, val in enumerate(labels):
             # print '!', val
             self.label_set[self.correct_map[val - 1]].append(i)
@@ -177,16 +180,15 @@ class ProtoDataSet(BaseDataSet):
             temp_total_num = total_num
             if temp_total_num > len(goal_set):
                 temp_total_num = len(goal_set)
-            # print '!', temp_total_num, self.test_shot, self.test_query
             array_label.append([i] * self.test_query)
             query_samples = []
             shot_samples = random.sample(range(len(goal_set)), temp_total_num)
             for j in range(self.test_query):
                 query_samples.append(shot_samples.pop())
             for j in shot_samples:
-                result_shot[i].append(self.fc7[j])
+                result_shot[i].append(self.fc7[goal_set[j]])
             for j in query_samples:
-                result_query[i].append(self.fc7[j])
+                result_query[i].append(self.fc7[goal_set[j]])
         # shape(way,shot,4096), shape(way,query,4096), shape(way,)
         print np.array(result_shot).shape, np.array(result_query).shape, np.array(array_label).shape
         self.test_support_set = np.array(result_shot)
@@ -199,9 +201,18 @@ class ProtoDataSet(BaseDataSet):
 
 
 if __name__ == "__main__":
-    DATA_SET = DataSet("../data/training", 2, 50, 227)
-    for i in range(10):
-        original_img, label = DATA_SET.next_batch()
-        # cv2.imwrite("hahaha.jpg", original_img[0])
-        print("label1:", label[0])
-        # print(original_img.shape, label.shape)
+    # DATA_SET = DataSet("../data/training", 2, 50, 227)
+    # for i in range(10):
+    #     original_img, label = DATA_SET.next_batch()
+    #     # cv2.imwrite("hahaha.jpg", original_img[0])
+    #     print("label1:", label[0])
+    #     # print(original_img.shape, label.shape)
+
+    np.set_printoptions(precision=5, edgeitems=50)
+    dataset = ProtoDataSet('./', 50, 10, 10, 50, 10, 10, phase='TRAIN')
+    support, query, label = dataset.next_batch()
+    print np.mean(support.reshape([50, 10 * 4096]), axis=1).shape
+    print np.mean(support.reshape([50, 10 * 4096]), axis=1)
+    support = support.reshape([500, 4096])
+    W = np.ones([support.shape[1], 256])
+    mul = np.matmul(support, W)

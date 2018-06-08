@@ -75,7 +75,9 @@ def linear(input_, output_size, scope=None, stddev=0.02, bias_start=0.0, with_w=
         matrix = tf.get_variable("Matrix", [shape[1], output_size], tf.float32,
                  tf.random_normal_initializer(stddev=stddev))
         bias = tf.get_variable("bias", [output_size],
-        initializer=tf.constant_initializer(bias_start))
+            initializer=tf.constant_initializer(bias_start))
+        tf.summary.histogram("W", matrix)
+        tf.summary.histogram("b", bias)
         if with_w:
             return tf.matmul(input_, matrix) + bias, matrix, bias
         else:

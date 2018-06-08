@@ -14,7 +14,7 @@ class ProtoNet(object):
     def __init__(self, sess, epoch, 
         way, shot, query,
         test_way, test_shot, test_query,
-        checkpoint_dir, log_dir, learning_rate = 0.1, beta1=0.5):
+        checkpoint_dir, log_dir, learning_rate = 1e-5, beta1=0.5):
         
         self.sess = sess
         self.log_dir = log_dir
@@ -39,24 +39,40 @@ class ProtoNet(object):
         # parameters
         self.input_dim = 4096
         self.inner1 = 4096
-        self.output_dim = 4096
+        self.output_dim = 256
 
         # train
+        print '! learning_rate:', learning_rate
         self.learning_rate = learning_rate
 
     def encoder(self, x, is_training=True, reuse=False):
         with tf.variable_scope("encoder", reuse=reuse):
-            net = tf.nn.relu(bn(linear(x, 8192, scope='fc1'), is_training=is_training, scope='bn1'))
-            # net = tf.nn.relu(bn(linear(net, 8192, scope='fc2'), is_training=is_training, scope='bn2'))
-            # net = tf.nn.relu(bn(linear(net, 4096, scope='fc3'), is_training=is_training, scope='bn3'))
-            out = bn(linear(net, self.output_dim, scope='fc4'), is_training=is_training, scope='bn4')
+            # tf.summary.histogram('origin', x)
+            net1 = tf.nn.relu(bn(linear(x, 1024, scope='fc1'), is_training=is_training, scope='bn1'))
+            # tf.summary.histogram('bn1', net1)
+            # net2 = tf.nn.relu(bn(linear(net1, 4096, scope='fc2'), is_training=is_training, scope='bn2'))
+            # tf.summary.histogram('bn2', net2)
+            # net3 = tf.nn.relu(bn(linear(net2, 2048, scope='fc3'), is_training=is_training, scope='bn3'))
+            # tf.summary.histogram('bn3', net3)
+            # net4 = tf.nn.relu(bn(linear(net3, 1024, scope='fc4'), is_training=is_training, scope='bn4'))
+            # tf.summary.histogram('bn4', net4)
+            # net5 = tf.nn.relu(bn(linear(net4, 512, scope='fc5'), is_training=is_training, scope='bn5'))
+            # tf.summary.histogram('bn5', net5)
+            # out = linear(net5, self.output_dim, scope='fc6')
+            out = bn(linear(net1, self.output_dim, scope='fc6'), is_training=is_training, scope='bn6')
+            # tf.summary.histogram('gradient5', tf.gradients(out, net5))
+        # self.writer.histogram('bn6', out)
         return out
 
     def euclidean_dist(self, x, y):
+        # x = tf.Print(x, [x], summarize=256*2, message='x')
+        # y = tf.Print(y, [y], summarize=256*2, message='y')
         N, D = tf.shape(x)[0], tf.shape(x)[1]
         M = tf.shape(y)[0]
         x = tf.tile(tf.expand_dims(x, axis=1), (1, M, 1))
         y = tf.tile(tf.expand_dims(y, axis=0), (N, 1, 1))
+        # temp = tf.square(x - y)
+        # temp = tf.Print(temp, [temp], summarize=256*3, message='temp')
         return tf.reduce_mean(tf.square(x - y), axis=2)
     
     def build_model(self):
@@ -71,7 +87,7 @@ class ProtoNet(object):
         query_output = self.encoder(tf.reshape(self.query_set, [self.way * self.query, self.input_dim]), reuse=True)
 
         output_dim = tf.shape(support_output)[-1]
-        c = tf.reduce_mean(tf.reshape(support_output, [self.way, self.shot, output_dim]), axis = 1)
+        c = tf.reduce_mean(tf.reshape(support_output, [self.way, self.shot, output_dim]), axis = 1)        
         # (self.way * self.query, self.output_dim) (self.way, self.output_dim)
         # -> (self.way * self.query, self.way)
         dists = self.euclidean_dist(query_output, c)
@@ -115,6 +131,7 @@ class ProtoNet(object):
         self.saver = tf.train.Saver()
 
         # summary writer
+        merged = tf.summary.merge_all()
         self.writer = tf.summary.FileWriter(self.log_dir + '/' + self.model_name, self.sess.graph)
 
         # restore check-point if it exits
@@ -138,12 +155,12 @@ class ProtoNet(object):
             support_set, query_set, labels = self.train_set.next_batch()
 
             # update network
-            _, loss_summary_str, acc_summary_str, loss, acc = \
-                self.sess.run([self.optim, self.loss_sum, self.acc_sum, self.loss, self.acc],
+            _, loss_summary_str, acc_summary_str, loss, acc, summary = \
+                self.sess.run([self.optim, self.loss_sum, self.acc_sum, self.loss, self.acc, merged],
                     feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
-            # print one_hot
-            self.writer.add_summary(loss_summary_str, counter)
-            self.writer.add_summary(acc_summary_str, counter)
+            self.writer.add_summary(loss_summary_str, epoch)
+            self.writer.add_summary(acc_summary_str, epoch)
+            self.writer.add_summary(summary, epoch)
 
 
 
@@ -152,7 +169,7 @@ class ProtoNet(object):
                   % (epoch, acc, loss))
 
             # save model
-            self.save(self.checkpoint_dir, counter)
+            self.save(self.checkpoint_dir, epoch)
 
             '''Test'''
             if epoch % 10 == 0:
@@ -167,7 +184,7 @@ class ProtoNet(object):
 
 
         # save model for final step
-        self.save(self.checkpoint_dir, counter)
+        self.save(self.checkpoint_dir, self.epoch)
     
     def pred(self):
 
