@@ -8,7 +8,7 @@ import argparse
 def parse_args():
     desc = "Few-shot Learning by Prototypical Network"
     parser = argparse.ArgumentParser(description=desc)
-    parser.add_argument('--epoch', type=int, default=800, help='The number of epochs to run')
+    parser.add_argument('--epoch', type=int, default=20000, help='The number of epochs to run')
     parser.add_argument('--batch_size', type=int, default=50, help='The size of batch')
     parser.set_defaults(test=False)
     parser.add_argument('--checkpoint_dir', type=str, default='checkpoint',

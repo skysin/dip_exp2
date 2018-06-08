@@ -23,22 +23,6 @@ class transfer_model(object):
         self.batch_size = 4
         self.beta1 = beta1
         self.label_dim = 50
-        # if dataset_name == 'BLSD':
-        #     self.label_dim = 8
-        #     self.train_set = DataSet("../dataset/BLSD/img", self.batch_size, self.label_dim)
-        #     self.log_dir = log_dir + "/BLSD"
-        #     self.checkpoint_dir = checkpoint_dir + "/BLSD"
-        #     self.predict_set = DataSet("../predictset/BLSD", 1, self.label_dim)
-        #     self.label_name = ["amusement", "anger", "awe", "contentment", "disgust", "excitement", "fear", "sadness"]
-        #     #self.pred_set = DataSet("../BLSD_predset/img", self.batch_size)
-        # elif dataset_name == 'kaggle':
-        #     self.label_dim = 7
-        #     self.train_set = DataSet("../dataset/kaggle/training", self.batch_size, self.label_dim)
-        #     self.test_set = DataSet("../dataset/kaggle/test", 1, self.label_dim)
-        #     self.log_dir = log_dir + "/kaggle"
-        #     self.checkpoint_dir = checkpoint_dir + "/kaggle"
-        #     self.predict_set = DataSet("../predictset/kaggle", 1, self.label_dim)
-        #     self.label_name = ["anger", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
         self.train_set = DataSet("../data/train_augment", self.batch_size, self.label_dim)
         self.test_set = DataSet("../data/test_augment", self.batch_size, self.label_dim)
 		# parameters
@@ -49,19 +33,19 @@ class transfer_model(object):
         self.c_dim = 3
 
         # train
-        self.learning_rate = learning_rate
+        self.init_learning_rate = learning_rate
         
         # get number of batches for a single epoch
         self.num_batches = self.train_set.total_batches
         self.test_num_batches = self.test_set.total_batches
 
     def classifier(self, x, is_training=True, reuse=False):
-        # Arichitecture : VGG16(CONV7x7x512_P-FC4096_BR-FC4097_BR-FC[label_dim]-softmax)
         with tf.variable_scope("classifier", reuse=reuse):
-            net = tf.reshape(x, [-1, 6*6*256])
-            net = tf.nn.relu(bn(linear(net, 4096, scope='fc1'), is_training=is_training, scope='bn1'))
-            net = tf.nn.relu(bn(linear(net, 4096, scope='fc2'), is_training=is_training, scope='bn2'))
-            out = linear(net, self.label_dim, scope='fc3')
+            #net = tf.reshape(x, [-1, 6*6*256])
+            #net = tf.nn.relu(bn(linear(net, 4096, scope='fc1'), is_training=is_training, scope='bn1'))
+            #net = tf.nn.relu(bn(linear(net, 4096, scope='fc2'), is_training=is_training, scope='bn2'))
+            #out = linear(net, self.label_dim, scope='fc3')
+            out = linear(x, self.label_dim, scope='fc8')
         return out
         
     def build_model(self):
@@ -71,16 +55,22 @@ class transfer_model(object):
 
         """ Graph Input """
         # images
-        self.inputs = tf.placeholder(tf.float32, [self.batch_size] + image_dims, name='input_images')
+        self.inputs = tf.placeholder(tf.float32, [None] + image_dims, name='input_images')
 
         # labels
-        self.labels = tf.placeholder(tf.float32, [self.batch_size, self.label_dim], name='label')
+        self.labels = tf.placeholder(tf.float32, [None, self.label_dim], name='label')
+
+        # keep prob
+        self.keep_prob = tf.placeholder(tf.float32, shape=[])
+
+        # learning rate
+        self.learning_rate = tf.placeholder(tf.float32, shape=[])
 
         """ Loss Function """
 
         # get fc output of alexnet
-        self.alexnet = AlexNet(self.inputs, keep_prob=1.0, num_classes=1000, skip_layer=[])
-        logits = self.classifier(self.alexnet.pool5, is_training=True, reuse=False)
+        self.alexnet = AlexNet(self.inputs, keep_prob=self.keep_prob, num_classes=1000, skip_layer=[])
+        logits = self.classifier(self.alexnet.dropout7, is_training=True, reuse=False)
         prob = tf.nn.softmax(logits)
         self.prob = prob
         # 
@@ -98,7 +88,7 @@ class transfer_model(object):
         """ Testing """
         # for test
         
-        test_logits = self.classifier(self.alexnet.pool5, is_training=False, reuse=True)
+        test_logits = self.classifier(self.alexnet.dropout7, is_training=False, reuse=True)
         self.test_prob = tf.nn.softmax(test_logits)
         
         self.correct_pred = tf.equal(tf.argmax(self.test_prob, axis=1), tf.argmax(self.labels, axis=1))
@@ -135,26 +125,41 @@ class transfer_model(object):
 
         # loop for epoch
         start_time = time.time()
+        lr = self.init_learning_rate
+        min_loss = 100
+        update_cnt = 0
         for epoch in range(start_epoch, self.epoch):
-
+            cur_loss = 0
             # get batch data
             for idx in range(start_batch_id, self.num_batches):
                 ''' TODO: add data'''
                 inputs, labels = self.train_set.next_batch()
 
                 # update network
-                _, loss_summary_str, acc_summary_str, loss, prob = self.sess.run([self.optim, self.loss_sum, self.acc_sum, self.loss, self.prob],
-                                               feed_dict={self.alexnet.X: inputs, self.labels: labels})
+                _, loss_summary_str, acc_summary_str, loss, prob = self.sess.run([self.optim, self.loss_sum, self.acc_sum, self.loss, self.prob], feed_dict={
+                    self.inputs: inputs,
+                    self.labels: labels,
+                    self.keep_prob: 0.5,
+                    self.learning_rate: lr})
                 self.writer.add_summary(loss_summary_str, counter)
                 self.writer.add_summary(acc_summary_str, counter)
+                cur_loss += loss
                 #print("output", prob)
                 #print("answer", labels)
                 # display training status
                 counter += 1
                 if counter % 100 == 1:
-                    print("Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.8f" \
-                      % (epoch, idx, self.num_batches, time.time() - start_time, loss))
-
+                    print("Epoch: [%2d] [%4d/%4d] time: %4.4f, loss: %.8f, lr: %.6f" \
+                      % (epoch, idx, self.num_batches, time.time() - start_time, loss, lr))
+            # adapt learning rate
+            if cur_loss / (self.num_batches - start_batch_id) > min_loss:
+                update_cnt += 1
+            else:
+                update_cnt = 0
+            if update_cnt == 5:
+                update_cnt = 0
+                lr = lr * 0.5
+            
             # After an epoch, start_batch_id is set to zero
             # non-zero value is only for the first epoch after loading pre-trained model
             start_batch_id = 0
@@ -168,7 +173,11 @@ class transfer_model(object):
             acc = 0
             for idx in range(0, self.test_num_batches):
                 inputs, labels = self.test_set.next_batch()
-                correct_pred, prob = self.sess.run([self.correct_pred, self.prob], feed_dict={self.alexnet.X: inputs, self.labels: labels})
+                correct_pred, prob = self.sess.run([self.correct_pred, self.prob],
+                    feed_dict={
+                        self.inputs: inputs,
+                        self.labels: labels,
+                        self.keep_prob: 1.0})
                 #if np.sum(prob) == np.argmax(labels):
                 #print(prob[0])
                 #print(np.argmax(prob, axis=1), np.argmax(labels, axis=1))
