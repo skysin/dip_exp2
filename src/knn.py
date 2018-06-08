@@ -191,7 +191,7 @@ if __name__ == "__main__":
         knn.load_training_data(1600)
 
         for i in range(1, 6):
-            knn.load_testing_data(400)
+            knn.load_testing_data(400, i)
     
 
     '''
