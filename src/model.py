@@ -20,7 +20,7 @@ class transfer_model(object):
         self.log_dir = log_dir
         self.checkpoint_dir = checkpoint_dir
         self.epoch = epoch
-        self.batch_size = 1
+        self.batch_size = 4
         self.beta1 = beta1
         self.label_dim = 50
         # if dataset_name == 'BLSD':
@@ -39,8 +39,9 @@ class transfer_model(object):
         #     self.checkpoint_dir = checkpoint_dir + "/kaggle"
         #     self.predict_set = DataSet("../predictset/kaggle", 1, self.label_dim)
         #     self.label_name = ["anger", "disgust", "fear", "happy", "sad", "surprise", "neutral"]
-        self.train_set = DataSet("../data/training", self.batch_size, self.label_dim)
-        # parameters
+        self.train_set = DataSet("../data/train_augment", self.batch_size, self.label_dim)
+        self.test_set = DataSet("../data/test_augment", self.batch_size, self.label_dim)
+		# parameters
         self.input_height = 227
         self.input_width = 227
         #self.output_height = 224
@@ -52,7 +53,7 @@ class transfer_model(object):
         
         # get number of batches for a single epoch
         self.num_batches = self.train_set.total_batches
-        #self.test_num_batches = self.test_set.total_batches
+        self.test_num_batches = self.test_set.total_batches
 
     def classifier(self, x, is_training=True, reuse=False):
         # Arichitecture : VGG16(CONV7x7x512_P-FC4096_BR-FC4097_BR-FC[label_dim]-softmax)
@@ -81,6 +82,7 @@ class transfer_model(object):
         self.alexnet = AlexNet(self.inputs, keep_prob=1.0, num_classes=1000, skip_layer=[])
         logits = self.classifier(self.alexnet.pool5, is_training=True, reuse=False)
         prob = tf.nn.softmax(logits)
+        self.prob = prob
         # 
         self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=logits, labels=self.labels))
 
@@ -99,8 +101,8 @@ class transfer_model(object):
         test_logits = self.classifier(self.alexnet.pool5, is_training=False, reuse=True)
         self.test_prob = tf.nn.softmax(test_logits)
         
-        correct_pred = tf.equal(tf.argmax(self.test_prob), tf.argmax(self.labels))
-        self.acc = tf.reduce_mean(tf.cast(correct_pred, tf.float32))
+        self.correct_pred = tf.equal(tf.argmax(self.test_prob, axis=1), tf.argmax(self.labels, axis=1))
+        self.acc = tf.reduce_mean(tf.cast(self.correct_pred, tf.float32))
         
         """ Summary """
         self.loss_sum = tf.summary.scalar("loss", self.loss)
@@ -141,11 +143,12 @@ class transfer_model(object):
                 inputs, labels = self.train_set.next_batch()
 
                 # update network
-                _, loss_summary_str, acc_summary_str, loss = self.sess.run([self.optim, self.loss_sum, self.acc_sum, self.loss],
+                _, loss_summary_str, acc_summary_str, loss, prob = self.sess.run([self.optim, self.loss_sum, self.acc_sum, self.loss, self.prob],
                                                feed_dict={self.alexnet.X: inputs, self.labels: labels})
                 self.writer.add_summary(loss_summary_str, counter)
                 self.writer.add_summary(acc_summary_str, counter)
-
+                #print("output", prob)
+                #print("answer", labels)
                 # display training status
                 counter += 1
                 if counter % 100 == 1:
@@ -161,16 +164,22 @@ class transfer_model(object):
 
             '''Test'''
 
-            '''
+            
             acc = 0
             for idx in range(0, self.test_num_batches):
                 inputs, labels = self.test_set.next_batch()
-                prob = self.sess.run([self.test_prob], feed_dict={self.inputs: inputs})
-                if np.argmax(prob) == np.argmax(labels):
-                    acc += 1
+                correct_pred, prob = self.sess.run([self.correct_pred, self.prob], feed_dict={self.alexnet.X: inputs, self.labels: labels})
+                #if np.sum(prob) == np.argmax(labels):
+                #print(prob[0])
+                #print(np.argmax(prob, axis=1), np.argmax(labels, axis=1))
+                acc += (np.sum(correct_pred) + 0.0)/ self.batch_size
+                #print np.sum(correct_pred), self.batch_size
+                #print(np.sum(correct_pred), self.batch_size)
+                #print(len(correct_pred), labels.shape)
+                #print(correct_pred)
             print("Epoch: [%2d] acc: %.8f" \
                       % (epoch, (acc + 0.0) / self.test_num_batches))
-            '''
+            
 
         # save model for final step
         self.save(self.checkpoint_dir, counter)

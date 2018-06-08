@@ -31,7 +31,7 @@ test_dir = '../data/test_augment'
 check_folder(train_dir)
 check_folder(test_dir)
 
-np.random.seed(1234)
+#np.random.seed(1234)
 
 for dir_name in os.listdir(data_dir):
     fi_d = os.path.join(data_dir, dir_name)
@@ -42,7 +42,7 @@ for dir_name in os.listdir(data_dir):
             else:
                 output_path = train_dir + '/' + file_name.split('.')[0]
             
-            print output_path
+            print(output_path)
             
             image_path = data_dir + '/' + dir_name + '/' + file_name 
             img_data = cv2.imread(image_path)

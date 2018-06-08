@@ -53,7 +53,8 @@ class BaseDataSet(object):
         img_data = cv2.resize(img_data, (self.data_size, self.data_size)).astype(np.float32)
         vgg_mean = np.array([103.939, 116.779, 123.68])
         img_data =  img_data - vgg_mean
-        return img_data, image_path.split("/")[-1].split('.')[0].split('_')[1]
+        #print(image_path, image_path.split("/")[-1].split('_')[0]) 
+        return img_data, image_path.split("/")[-1].split('_')[0]
 
     def shuffle_data(self):
         # test set should not be shuffled

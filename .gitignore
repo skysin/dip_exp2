@@ -10,3 +10,8 @@ ProtoNet/*.npy
 *.jpg
 *.tar
 *.pyc
+src/checkpoint
+src/logs
+*.swo
+*.swp
+
