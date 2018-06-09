@@ -4,7 +4,9 @@ import os
 import cv2
 import random
 import fileinput
+import tensorflow as tf
 
+from alexnet import AlexNet
 
 class BaseDataSet(object):
     def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
@@ -97,39 +99,137 @@ class DataSet(BaseDataSet, object):
 
 
 class ProtoDataSet(BaseDataSet):
-    def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
-        BaseDataSet.__init__(self, data_dir, batch_size,
-                             label_dim, data_size, max_size)
-        self.correct_map = []
-        self.label_set = [[] for i in range(1000)]  # 1000个label的样本list
-        self.classes_list = [i for i in range(1000)]  # 指向label的key
-        self.total_classes = 1000  # 总类别数
-        self.init_correct_map()
-        self.shuffle_classes_list()
-        self.init_label_set()
-        self.fc7
+    def __init__(self, 
+        data_dir, 
+        way, query, shot, 
+        test_way=None, test_query=None, test_shot=None,
+        phase="TRAIN", valid=True, gen_test=False):
 
-    def next_batch(self, way, shot, query):
+        print("Data path: " + data_dir)
+
+        self.data_dir = data_dir
+        self.way = way
+        self.query = query
+        self.shot = shot
+        self.test_way = test_way
+        self.test_query = test_query
+        self.test_shot = test_shot
+        self.valid = valid
+        assert(phase == 'TRAIN' or phase == 'TEST')
+        self.phase = phase
+        if self.phase == 'TRAIN' and valid:
+            assert(test_way != None and test_query != None and test_shot != None)
+
+        if self.phase == 'TRAIN':
+            self.correct_map = []
+            self.label_set = [[] for i in range(1000)]
+            self.classes_list = [i for i in range(1000)]
+            self.total_classes = 1000
+            self.cur_index = 0
+            self.init_correct_map()
+            self.init_label_set()
+            if valid:
+                self.valid_classes_list = self.classes_list[:self.test_way]
+                self.classes_list = self.classes_list[self.test_way:]
+                print self.valid_classes_list
+                self.total_classes -= self.test_way
+                self.set_valid_data()
+            self.shuffle_classes_list()
+        else:
+            print("Loading test data...")
+            if gen_test or not os.path.exists(data_dir + '/train_fc7.npy') \
+                or not os.path.exists(data_dir + '/valid_fc7.npy'):
+                self.gen_test_data('/train_augment', '/test_augment')
+            self.label_set = [[] for i in range(50)]
+            self.classes_list = [i for i in range(50)]
+            self.total_classes = 50
+            self.cur_index = 0
+            self.load_test_data()
+            print("Finish loading!")
+
+    def gen_test_data(self, train_dir, test_dir):
+        print("Generate fc7 from testing data...")
+        train_path = self.data_dir + train_dir
+        test_path = self.data_dir + test_dir
+
+        train_data = BaseDataSet(train_path, 500, 50)
+        train_data.image_list = sorted(train_data.image_list)
+        train_data_set = []
+        train_label_set = []
+        for image_path in train_data.image_list:
+            data, label = train_data.read_image(image_path)
+            train_data_set.append(data)
+            train_label_set.append(int(label) - 1)
+
+        test_data = BaseDataSet(test_path, 500, 50)
+        test_data.image_list = sorted(test_data.image_list)
+        test_data_set = []
+        test_label_set = []
+        for image_path in test_data.image_list:
+            data, label = test_data.read_image(image_path)
+            test_data_set.append(data)
+            test_label_set.append(int(label) - 1)
+
+        train_fc7 = []
+        test_fc7 = []
+        with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
+            inputs = tf.placeholder(tf.float32, [1, 227, 227, 3], name="input_image")
+            alexnet = AlexNet(inputs, keep_prob=1.0, num_classes=1000, skip_layer=[])
+            tf.global_variables_initializer().run()
+            alexnet.load_initial_weights(sess)
+            for i in range(len(train_data_set)):
+                fc7 = sess.run([alexnet.fc7], feed_dict={alexnet.X: np.array(train_data_set[i]).reshape([1, 227, 227, 3])})
+                train_fc7.append(fc7[0].reshape([4096]))
+            for i in range(len(test_data_set)):
+                fc7 = sess.run([alexnet.fc7], feed_dict={alexnet.X: np.array(test_data_set[i]).reshape([1, 227, 227, 3])})
+                test_fc7.append(fc7[0].reshape([4096]))
+        np.save(self.data_dir + '/train_fc7.npy', np.array(train_fc7))
+        np.save(self.data_dir + '/valid_fc7.npy', np.array(test_fc7))
+        np.save(self.data_dir + '/train_label.npy', np.array(train_label_set))
+        np.save(self.data_dir + '/valid_label.npy', np.array(test_label_set))
+        print('Finish generating!')
+
+    def load_test_data(self):
+        train_fc7 = np.load(self.data_dir + '/train_fc7.npy')
+        test_fc7 = np.load(self.data_dir + '/valid_fc7.npy')
+        train_label = np.load(self.data_dir + '/train_label.npy')
+        test_label = np.load(self.data_dir + '/valid_label.npy')
+        self.test_support_set = np.zeros([self.way, self.shot, 4096])
+        self.test_query_set = np.zeros([self.way, self.query, 4096])
+        self.test_label = np.zeros([self.way, self.query])
+        for way in range(self.way):
+            for shot in range(self.shot):
+                self.test_support_set[way, shot, :] = train_fc7[way * 32 + (shot * 4) % 32, :]
+        for way in range(self.way):
+            for query in range(self.query):
+                self.test_query_set[way, query, :] = test_fc7[way * 8 + shot % 8, :]
+                self.test_label[way, query] = way
+
+    def next_batch(self):
+        if self.phase == 'TEST':
+            return self.test_support_set, self.test_query_set, self.test_label
+
         self.end_index = min(
-            [self.cur_index + way, 1000])
-        result_shot = [[] for i in range(way)]
+            [self.cur_index + self.way, self.total_classes])
+        result_shot = [[] for i in range(self.way)]
         array_label = []
-        result_query = [[] for i in range(way)]
-        total_num = shot + query
+        result_query = [[] for i in range(self.way)]
+        total_num = self.shot + self.query
         for i in range(self.cur_index, self.end_index):
             goal_set = self.label_set[self.classes_list[i]]
-            array_label.append(self.correct_map[self.classes_list[i]])
-            if total_num > len(goal_set):
-                total_num = len(goal_set)
+            temp_total_num = total_num
+            if temp_total_num > len(goal_set):
+                temp_total_num = len(goal_set)
+            array_label.append([i - self.cur_index] * self.query)
             query_samples = []
-            shot_samples = random.sample(range(len(goal_set)), total_num)
-            for j in range(query):
+            shot_samples = random.sample(range(len(goal_set)), temp_total_num)
+            for j in range(self.query):
                 query_samples.append(shot_samples.pop())
             for j in shot_samples:
-                result_shot[i].append(self.fc7[j])
+                result_shot[i - self.cur_index].append(self.fc7[goal_set[j]])
             for j in query_samples:
-                result_query[i].append(self.fc7[j])
-        self.cur_index += way
+                result_query[i - self.cur_index].append(self.fc7[goal_set[j]])
+        self.cur_index += self.way
         if self.cur_index >= self.total_classes:
             self.cur_index = 0
             self.shuffle_classes_list()
@@ -137,19 +237,45 @@ class ProtoDataSet(BaseDataSet):
         return np.array(result_shot), np.array(result_query), np.array(array_label)
 
     def init_label_set(self):
-        labels = np.load('../label.npy').tolist()
-        self.fc7 = np.load('../fc7.npy')
+        labels = np.load(self.data_dir + '/label.npy').tolist()
+        self.fc7 = np.load(self.data_dir + '/fc7.npy')
         for i, val in enumerate(labels):
-            self.label_set[val].append(i)
+            self.label_set[self.correct_map[val - 1]].append(i)
 
     def shuffle_classes_list(self):
         random.shuffle(self.classes_list)
 
     def init_correct_map(self):
-        for line in fileinput.input("../correct.txt"):
-            self.correct_map.append(int(line.split()[1]))
+        for line in fileinput.input(self.data_dir + "/correct.txt"):
+            self.correct_map.append(int(line.split()[1]) - 1)
 
+    def set_valid_data(self):
+        result_shot = [[] for i in range(self.test_way)]
+        array_label = []
+        result_query = [[] for i in range(self.test_way)]
+        total_num = self.test_shot + self.test_query
+        for i in range(self.test_way):
+            goal_set = self.label_set[self.valid_classes_list[i]]
+            temp_total_num = total_num
+            if temp_total_num > len(goal_set):
+                temp_total_num = len(goal_set)
+            array_label.append([i] * self.test_query)
+            query_samples = []
+            shot_samples = random.sample(range(len(goal_set)), temp_total_num)
+            for j in range(self.test_query):
+                query_samples.append(shot_samples.pop())
+            for j in shot_samples:
+                result_shot[i].append(self.fc7[goal_set[j]])
+            for j in query_samples:
+                result_query[i].append(self.fc7[goal_set[j]])
+        # shape(way,shot,4096), shape(way,query,4096), shape(way,)
+        print np.array(result_shot).shape, np.array(result_query).shape, np.array(array_label).shape
+        self.test_support_set = np.array(result_shot)
+        self.test_query_set = np.array(result_query)
+        self.test_label = np.array(array_label)
 
+    def get_valid_data(self):
+        return self.test_support_set, self.test_query_set, self.test_label
 
 if __name__ == "__main__":
     DATA_SET = DataSet("../data/train_augment", 2, 50, 227)

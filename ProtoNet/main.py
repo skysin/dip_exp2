@@ -1,3 +1,6 @@
+import sys
+sys.path.append('../src')
+
 import os
 from model import ProtoNet
 
@@ -17,8 +20,9 @@ def parse_args():
                         help='Directory name to save training logs')
     parser.add_argument('--model_dir', type=str, default='models',
                         help='Directory name to save models')
-    parser.add_argument('--predict', type=bool, default=False)
+    parser.add_argument('--predict', type=int, default=1)
     parser.add_argument('--lr', type=float, default=0.001)
+    parser.add_argument('--load', type=int, default=0)
 
 
     parser.add_argument('--way', type=int, default=50, metavar='WAY',
@@ -55,6 +59,7 @@ def main():
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         # declare instance for transfer model
 
+        print args.predict
         model = ProtoNet(sess,
                 learning_rate=args.lr,
                 epoch=args.epoch,
@@ -65,7 +70,8 @@ def main():
                 shot=args.shot,
                 test_way=args.test_way,
                 test_query=args.test_query,
-                test_shot=args.test_shot)
+                test_shot=args.test_shot,
+                continue_learn=(args.load==1))
 
         # build graph
         model.build_model()
@@ -74,7 +80,7 @@ def main():
         # show_all_variables()
 
         # launch the graph in a session
-        if (args.predict):
+        if (args.predict == 1):
             model.pred()
             print(" [*] Prediction finished!")
         else:

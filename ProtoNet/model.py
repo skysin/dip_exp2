@@ -1,5 +1,9 @@
 #-*- coding: utf-8 -*-
 from __future__ import division
+
+import sys
+sys.path.append('../src')
+
 import os
 import time
 import tensorflow as tf
@@ -14,12 +18,13 @@ class ProtoNet(object):
     def __init__(self, sess, epoch, 
         way, shot, query,
         test_way, test_shot, test_query,
-        checkpoint_dir, log_dir, learning_rate = 1e-5, beta1=0.5):
+        checkpoint_dir, log_dir, learning_rate = 1e-5, beta1=0.5, continue_learn=False):
         
         self.sess = sess
         self.log_dir = log_dir
         self.epoch = epoch
         self.beta1 = beta1
+        self.continue_learn = continue_learn
 
         self.way = way
         self.shot = shot
@@ -28,17 +33,16 @@ class ProtoNet(object):
         self.test_shot = test_shot
         self.test_query = test_query
 
-        self.train_set = ProtoDataSet('./', 
+        self.train_set = ProtoDataSet('../data', 
             self.way, self.query, self.shot, 
             self.test_way, self.test_query, self.test_shot, phase='TRAIN')
         self.log_dir = log_dir + "/train"
         self.checkpoint_dir = checkpoint_dir + "/train"
-        # self.test_set = DataSet('../test', self.way, self.query, self.shot, phase='TEST')
-        # self.test_log_dir = log_dir + '/test'
+        self.test_set = ProtoDataSet('../data', self.way, self.query, self.shot, phase='TEST')
+        self.test_log_dir = log_dir + '/test'
 
         # parameters
         self.input_dim = 4096
-        self.inner1 = 4096
         self.output_dim = 1024
 
         # train
@@ -59,14 +63,10 @@ class ProtoNet(object):
         return out
 
     def euclidean_dist(self, x, y):
-        # x = tf.Print(x, [x], summarize=256*2, message='x')
-        # y = tf.Print(y, [y], summarize=256*2, message='y')
         N, D = tf.shape(x)[0], tf.shape(x)[1]
         M = tf.shape(y)[0]
         x = tf.tile(tf.expand_dims(x, axis=1), (1, M, 1))
         y = tf.tile(tf.expand_dims(y, axis=0), (N, 1, 1))
-        # temp = tf.square(x - y)
-        # temp = tf.Print(temp, [temp], summarize=256*3, message='temp')
         return tf.reduce_mean(tf.square(x - y), axis=2)
 
     def gram_matrix(self, x, y):
@@ -86,16 +86,9 @@ class ProtoNet(object):
 
         output_dim = tf.shape(support_output)[-1]
         c = tf.reduce_mean(tf.reshape(support_output, [self.way, self.shot, output_dim]), axis = 1)        
-        # (self.way * self.query, self.output_dim) (self.way, self.output_dim)
-        # -> (self.way * self.query, self.way)
         dists = self.euclidean_dist(query_output, c)
         log_p = tf.reshape(tf.nn.log_softmax(-dists), [self.way, self.query, -1])
-        # dists_inside = self.euclidean_dist(support_output, c)
-        # log_p_inside = tf.reshape(tf.nn.log_softmax(-dists_inside), [self.way, self.shot, -1])
-        # ground_truth = tf.tile(tf.expand_dims(tf.range(self.way), axis=1), (1, self.shot))
-        # ground_truth = tf.reshape(tf.one_hot(ground_truth, depth = self.way), [self.way, self.shot, -1])
-        self.loss = -tf.reduce_mean(tf.reshape(tf.reduce_sum(tf.multiply(self.label_one_hot, log_p), axis=-1), [-1]))
-        # self.loss += -tf.reduce_mean(tf.reshape(tf.reduce_sum(tf.multiply(log_p_inside, ground_truth), axis=-1), [-1]))
+        self.loss = -tf.reduce_mean(tf.reshape(tf.reduce_sum(tf.multiply(self.label_one_hot, log_p), axis=-1), [-1]))        
         self.acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(log_p, axis=-1), self.label)))
 
         """ Training """
@@ -114,8 +107,6 @@ class ProtoNet(object):
         
         test_output_dim = tf.shape(test_support_output)[-1]
         test_c = tf.reduce_mean(tf.reshape(test_support_output, [self.way, self.shot, output_dim]), axis = 1)
-        # (self.way * self.query, self.output_dim) (self.way, self.output_dim)
-        # -> (self.way * self.query, self.way)
         test_dists = self.euclidean_dist(test_query_output, test_c)
         test_log_p = tf.reshape(tf.nn.log_softmax(-test_dists), [self.way, self.query, -1])
         self.test_loss = -tf.reduce_mean(tf.reshape(tf.reduce_sum(tf.multiply(self.label_one_hot, test_log_p), axis=-1), [-1]))
@@ -139,7 +130,7 @@ class ProtoNet(object):
 
         # restore check-point if it exits
         could_load, checkpoint_counter = self.load(self.checkpoint_dir)
-        if could_load:
+        if could_load and self.continue_learn:
             start_epoch = (int)(checkpoint_counter)
             start_batch_id = checkpoint_counter - start_epoch
             counter = checkpoint_counter
@@ -153,13 +144,7 @@ class ProtoNet(object):
         # loop for epoch
         start_time = time.time()
         for epoch in range(start_epoch, self.epoch):
-            if epoch < 1000:
-                lr = self.init_learning_rate
-            elif epoch < 8000:
-                lr = self.init_learning_rate * 0.5
-            else:
-                lr = self.init_learning_rate * 0.1
-
+            lr = self.init_learning_rate
             support_set, query_set, labels = self.train_set.next_batch()
 
             # update network
@@ -183,9 +168,13 @@ class ProtoNet(object):
             counter += 1
 
             '''Test'''
-            if epoch % 10 == 0:
-                acc = 0
+            if epoch % 10 == 0:                
                 support_set, query_set, labels = self.train_set.get_valid_data()
+                test_loss, test_acc = self.sess.run([self.test_loss, self.test_acc], 
+                    feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
+                print("[Valid Set] Epoch: [%2d] acc: %.8f loss: %.8f" \
+                  % (epoch, test_acc, test_loss))
+                support_set, query_set, labels = self.test_set.next_batch()
                 test_loss, test_acc = self.sess.run([self.test_loss, self.test_acc], 
                     feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
                 print("[Test Set] Epoch: [%2d] acc: %.8f loss: %.8f" \
@@ -207,14 +196,12 @@ class ProtoNet(object):
             print(" [*] Load SUCCESS")
         else:
             print(" [!] Load failed...")
-        for idx in range(0, self.predict_num_batches):
-            support_set, query_set, labels = self.train_set.get_valid_data()
-            test_loss, test_acc = self.sess.run([self.test_loss, self.test_acc], 
-                feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
-            print test_loss
-            print test_acc
-            print self.label_name[np.argmax(prob)], self.label_name[np.argmax(labels)]
-            print "============" 
+        support_set, query_set, labels = self.test_set.next_batch()
+        test_loss, test_acc = self.sess.run([self.test_loss, self.test_acc], 
+            feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
+        print test_loss
+        print test_acc
+        print "============" 
     
     @property
     def model_dir(self):
