@@ -55,10 +55,10 @@ class transfer_model(object):
 
         """ Graph Input """
         # images
-        self.inputs = tf.placeholder(tf.float32, [None] + image_dims, name='input_images')
+        self.inputs = tf.placeholder(tf.float32, [self.batch_size] + image_dims, name='input_images')
 
         # labels
-        self.labels = tf.placeholder(tf.float32, [None, self.label_dim], name='label')
+        self.labels = tf.placeholder(tf.float32, [self.batch_size, self.label_dim], name='label')
 
         # keep prob
         self.keep_prob = tf.placeholder(tf.float32, shape=[])
