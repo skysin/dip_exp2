@@ -31,7 +31,7 @@ class KNN(object):
         self.alexnet.load_initial_weights(sess)
 
         for _i in range(7):
-            nn = KNeighborsClassifier()
+            nn = KNeighborsClassifier(n_neighbors=kneighbors)
             self.knn_list.append(nn)
             #clf = svm.SVC()
             #self.knn_list.append(clf)
@@ -78,6 +78,7 @@ class KNN(object):
             
             #if (i + 1) % 250 == 0:
                 #self.build_model()
+
         self.calibration_size = 400
         self.calibration_data = [self.training_data[j][img_num-self.calibration_size:img_num] for j in range(7)]
         self.calibration_label = self.label_set[img_num-self.calibration_size:img_num]
@@ -86,23 +87,25 @@ class KNN(object):
 
         self.build_model()
         self.A = []
-        total = 7 * self.kneighbors
+        #total = 7 * self.kneighbors
         for i in range(self.calibration_size):
-            target_label = np.argmax(label, axis=1)[0]
+            target_label = np.argmax(self.calibration_label[i], axis=1)[0]
             tar = []
             for k in range(7):
                 #print(self.calibration_data[k][i].shape)
                 tp = [self.label_set[int(j)] for j in self.knn_list[k].kneighbors([self.calibration_data[k][i]], n_neighbors=self.kneighbors, return_distance=False)[0]]
                 tar.extend(tp)
-            print(total, np.sum(np.equal(tar, target_label)))
-            print("label=", target_label)
-            print(tar)
+            #print(total, np.sum(np.equal(tar, target_label)))
+            #print("label=", target_label)
+            #print(tar)
             #self.A.append(np.sum())
+            total = np.sum(np.equal(tar, target_label))
+            self.A.append(total)
                 
            
 
-    def load_testing_data(self, img_num, kneighbor):
-        kneighbors = self.kneighbors
+    def load_testing_data(self, img_num):
+        kneighbor = self.kneighbors
         ds = DataSet(self.test_data_path, 1, self.class_num)
         source = []
         tar = []
@@ -131,7 +134,24 @@ class KNN(object):
                 #print(k)
                 tp = [self.label_set[int(j)] for j in self.knn_list[k].kneighbors(source[k], n_neighbors=kneighbor, return_distance=False)[0]]
                 tar.extend(tp)
+
+            max = 0
+            m_label = -1
+            for k_label in range(self.class_num):
+                alpha = np.sum(np.equal(tar, k_label))
+                pj = np.sum(np.greater_equal(self.A, alpha))
+                if pj >= max:
+                    max = pj
+                    m_label = k_label
+
+            if m_label == target_label:
+                count += 1
+
+            if (i + 1) % 20 = 0:
+                print("%d / %d, accuracy: %f" % ((i + 1), img_num, float(count / (i + 1))))
+
             
+            '''
             get_target = max(tar, key = tar.count)
 
             print(target_label, get_target)
@@ -141,8 +161,6 @@ class KNN(object):
 
             if i == img_num - 1:
                 print("k: %d, accuracy: %f" % (kneighbor, float(count / img_num)))
-            
-            '''
 
             
             print("label: ", np.argmax(label, axis=1)[0])
@@ -212,16 +230,10 @@ if __name__ == "__main__":
         #knn = KNN(sess, 50, "../data/training/", "../data/test/")
         knn = KNN(sess, 50, "../data/train_augment/", "../data/test_augment/", 10)
         knn.load_training_data(1600)
-        '''
-        for i in range(1, 6):
-            knn.load_testing_data(400, i)
-        ''' 
+        knn.load_testing_data(400)
+        
 
-    '''
-    an = AlexNet(img,1,1,[])
-    an.create()
-    an.load_initial_weights(sess)
-    '''
+    
 
 
-    pass
+
