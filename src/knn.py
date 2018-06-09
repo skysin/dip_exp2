@@ -13,7 +13,7 @@ from sklearn import svm
 
 class KNN(object):
     
-    def __init__(self, sess, class_num, train_data_path="../data/training", test_data_path="../data/testing", kneighbors):
+    def __init__(self, sess, class_num, train_data_path="../data/training", test_data_path="../data/testing", kneighbors=10):
         self.sess = sess
         self.train_data_path = train_data_path
         self.test_data_path = test_data_path
@@ -43,7 +43,7 @@ class KNN(object):
         
             
         for i in range(img_num):
-            print(i)
+            #print(i)
             img, label = ds.next_batch()
             out1, out2, out3, out4, out5, out6, out7 = self.sess.run([self.alexnet.norm1, self.alexnet.norm2, self.alexnet.conv3, self.alexnet.conv4,
                             self.alexnet.pool5, self.alexnet.fc6, self.alexnet.fc7], feed_dict={self.alexnet.X: img, self.labels: label})
@@ -64,14 +64,13 @@ class KNN(object):
             (1, 4096)
             (1, 4096)
             '''
-
-            self.training_data[1].append(out1[0].reshape(1, 27 * 27 * 96)[0])
-            self.training_data[2].append(out2[0].reshape(1, 13 * 13 * 256)[0])
-            self.training_data[3].append(out3[0].reshape(1, 13 * 13 * 384)[0])
-            self.training_data[4].append(out4[0].reshape(1, 13 * 13 * 384)[0])
-            self.training_data[5].append(out5[0].reshape(1, 6 * 6 * 256)[0])
-            self.training_data[6].append(out6[0])
-            self.training_data[7].append(out7[0])
+            self.training_data[0].append(out1[0].reshape(1, 27 * 27 * 96)[0])
+            self.training_data[1].append(out2[0].reshape(1, 13 * 13 * 256)[0])
+            self.training_data[2].append(out3[0].reshape(1, 13 * 13 * 384)[0])
+            self.training_data[3].append(out4[0].reshape(1, 13 * 13 * 384)[0])
+            self.training_data[4].append(out5[0].reshape(1, 6 * 6 * 256)[0])
+            self.training_data[5].append(out6[0])
+            self.training_data[6].append(out7[0])
             self.label_set.append(np.argmax(label, axis=1)[0])
             
             #if i == (img_num - 1):
@@ -80,9 +79,9 @@ class KNN(object):
             #if (i + 1) % 250 == 0:
                 #self.build_model()
         self.calibration_size = 400
-        self.calibration_data = self.training_data[img_num-self.calibration_size:img_num]
+        self.calibration_data = [self.training_data[j][img_num-self.calibration_size:img_num] for j in range(7)]
         self.calibration_label = self.label_set[img_num-self.calibration_size:img_num]
-        self.training_data = self.training_data[:img_num-self.calibration_size400]
+        self.training_data = [self.training_data[j][:img_num-self.calibration_size] for j in range(7)]
         self.label_set = self.label_set[:img_num-self.calibration_size]
 
         self.build_model()
@@ -92,7 +91,8 @@ class KNN(object):
             target_label = np.argmax(label, axis=1)[0]
             tar = []
             for k in range(7):
-                tp = [self.label_set[int(j)] for j in self.knn_list[k].kneighbors(self.calibration_data[i][k], n_neighbors=self.kneighbors, return_distance=False)[0]]
+                #print(self.calibration_data[k][i].shape)
+                tp = [self.label_set[int(j)] for j in self.knn_list[k].kneighbors([self.calibration_data[k][i]], n_neighbors=self.kneighbors, return_distance=False)[0]]
                 tar.extend(tp)
             print(total, np.sum(np.equal(tar, target_label)))
             print("label=", target_label)
@@ -191,9 +191,11 @@ class KNN(object):
     def build_model(self):
         for i in range(7):
             print("build ", i)
+            print(len(self.training_data))	
+            print(len(self.training_data[i]), len(self.label_set))
             try:
-                self.knn_list[i].fit(self.training_data[i + 1], self.label_set)
-                self.training_data[i + 1].clear()
+                self.knn_list[i].fit(self.training_data[i], self.label_set)
+                self.training_data[i].clear()
                 #self.label_set.clear()
             except:
                 print("something wrong")
@@ -208,12 +210,12 @@ class KNN(object):
 if __name__ == "__main__":
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
         #knn = KNN(sess, 50, "../data/training/", "../data/test/")
-        knn = KNN(sess, 50, "../data/train_augment/", "../data/test_augment/")
+        knn = KNN(sess, 50, "../data/train_augment/", "../data/test_augment/", 10)
         knn.load_training_data(1600)
-
+        '''
         for i in range(1, 6):
             knn.load_testing_data(400, i)
-    
+        ''' 
 
     '''
     an = AlexNet(img,1,1,[])

@@ -131,7 +131,7 @@ class ProtoDataSet(BaseDataSet):
             if valid:
                 self.valid_classes_list = self.classes_list[:self.test_way]
                 self.classes_list = self.classes_list[self.test_way:]
-                print self.valid_classes_list
+                #print self.valid_classes_list
                 self.total_classes -= self.test_way
                 self.set_valid_data()
             self.shuffle_classes_list()
@@ -269,7 +269,7 @@ class ProtoDataSet(BaseDataSet):
             for j in query_samples:
                 result_query[i].append(self.fc7[goal_set[j]])
         # shape(way,shot,4096), shape(way,query,4096), shape(way,)
-        print np.array(result_shot).shape, np.array(result_query).shape, np.array(array_label).shape
+        #print np.array(result_shot).shape, np.array(result_query).shape, np.array(array_label).shape
         self.test_support_set = np.array(result_shot)
         self.test_query_set = np.array(result_query)
         self.test_label = np.array(array_label)
