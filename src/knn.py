@@ -13,7 +13,7 @@ from sklearn import svm
 
 class KNN(object):
     
-    def __init__(self, sess, class_num, train_data_path="../data/training", test_data_path="../data/testing"):
+    def __init__(self, sess, class_num, train_data_path="../data/training", test_data_path="../data/testing", kneighbors):
         self.sess = sess
         self.train_data_path = train_data_path
         self.test_data_path = test_data_path
@@ -21,6 +21,7 @@ class KNN(object):
         self.training_data = [[], [], [], [], [], [], [], []]
         self.label_set = []
         self.knn_list = []
+        self.kneighbors = kneighbors
         #self.pca = PCA(n_components=4096)
 
         self.inputs = tf.placeholder(tf.float32, [1, 227, 227, 3], name="input_image")
@@ -73,15 +74,35 @@ class KNN(object):
             self.training_data[7].append(out7[0])
             self.label_set.append(np.argmax(label, axis=1)[0])
             
-            if i == (img_num - 1):
-                self.build_model()
+            #if i == (img_num - 1):
+            #    self.build_model()
             
             #if (i + 1) % 250 == 0:
                 #self.build_model()
-            
+        self.calibration_size = 400
+        self.calibration_data = self.training_data[img_num-self.calibration_size:img_num]
+        self.calibration_label = self.label_set[img_num-self.calibration_size:img_num]
+        self.training_data = self.training_data[:img_num-self.calibration_size400]
+        self.label_set = self.label_set[:img_num-self.calibration_size]
+
+        self.build_model()
+        self.A = []
+        total = 7 * self.kneighbors
+        for i in range(self.calibration_size):
+            target_label = np.argmax(label, axis=1)[0]
+            tar = []
+            for k in range(7):
+                tp = [self.label_set[int(j)] for j in self.knn_list[k].kneighbors(self.calibration_data[i][k], n_neighbors=self.kneighbors, return_distance=False)[0]]
+                tar.extend(tp)
+            print(total, np.sum(np.equal(tar, target_label)))
+            print("label=", target_label)
+            print(tar)
+            #self.A.append(np.sum())
                 
+           
 
     def load_testing_data(self, img_num, kneighbor):
+        kneighbors = self.kneighbors
         ds = DataSet(self.test_data_path, 1, self.class_num)
         source = []
         tar = []
