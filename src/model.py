@@ -20,7 +20,7 @@ class transfer_model(object):
         self.log_dir = log_dir
         self.checkpoint_dir = checkpoint_dir
         self.epoch = epoch
-        self.batch_size = 4
+        self.batch_size = batch_size
         self.beta1 = beta1
         self.label_dim = 50
         self.train_set = DataSet("../data/train_augment", self.batch_size, self.label_dim)

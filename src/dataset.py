@@ -103,7 +103,7 @@ class ProtoDataSet(BaseDataSet):
         data_dir, 
         way, query, shot, 
         test_way=None, test_query=None, test_shot=None,
-        phase="TRAIN", valid=True, gen_test=False):
+        phase="TRAIN", valid=True, gen_test=True):
 
         print("Data path: " + data_dir)
 
@@ -134,12 +134,12 @@ class ProtoDataSet(BaseDataSet):
                 print self.valid_classes_list
                 self.total_classes -= self.test_way
                 self.set_valid_data()
-            self.shuffle_classes_list()
+            # self.shuffle_classes_list()
         else:
             print("Loading test data...")
             if gen_test or not os.path.exists(data_dir + '/train_fc7.npy') \
                 or not os.path.exists(data_dir + '/valid_fc7.npy'):
-                self.gen_test_data('/train_augment', '/test_augment')
+                self.gen_test_data('/training')
             self.label_set = [[] for i in range(50)]
             self.classes_list = [i for i in range(50)]
             self.total_classes = 50
@@ -147,28 +147,26 @@ class ProtoDataSet(BaseDataSet):
             self.load_test_data()
             print("Finish loading!")
 
-    def gen_test_data(self, train_dir, test_dir):
+    def gen_test_data(self, train_dir):
         print("Generate fc7 from testing data...")
         train_path = self.data_dir + train_dir
-        test_path = self.data_dir + test_dir
 
         train_data = BaseDataSet(train_path, 500, 50)
         train_data.image_list = sorted(train_data.image_list)
         train_data_set = []
         train_label_set = []
-        for image_path in train_data.image_list:
-            data, label = train_data.read_image(image_path)
-            train_data_set.append(data)
-            train_label_set.append(int(label) - 1)
-
-        test_data = BaseDataSet(test_path, 500, 50)
-        test_data.image_list = sorted(test_data.image_list)
         test_data_set = []
         test_label_set = []
-        for image_path in test_data.image_list:
-            data, label = test_data.read_image(image_path)
-            test_data_set.append(data)
-            test_label_set.append(int(label) - 1)
+        for image_path in train_data.image_list:
+            data, label = train_data.read_image(image_path)
+            if '0009.jpg' in image_path or '0010.jpg' in image_path:
+                print 'test:', image_path
+                test_data_set.append(data)
+                test_label_set.append(int(label) - 1)
+            else:
+                print 'train:', image_path
+                train_data_set.append(data)
+                train_label_set.append(int(label) - 1)
 
         train_fc7 = []
         test_fc7 = []
@@ -199,11 +197,13 @@ class ProtoDataSet(BaseDataSet):
         self.test_label = np.zeros([self.way, self.query])
         for way in range(self.way):
             for shot in range(self.shot):
-                self.test_support_set[way, shot, :] = train_fc7[way * 32 + (shot * 4) % 32, :]
+                assert train_label[way * 8 + shot % 8] == way
+                self.test_support_set[way, shot, :] = train_fc7[way * 8 + shot % 8, :]
         for way in range(self.way):
             for query in range(self.query):
-                self.test_query_set[way, query, :] = test_fc7[way * 8 + shot % 8, :]
-                self.test_label[way, query] = way
+                self.test_query_set[way, query, :] = test_fc7[way * 2 + query % 2, :]
+                self.test_label[way, query] = test_label[way * 2 + query % 2]
+                # print test_label[way * self.query + query]
 
     def next_batch(self):
         if self.phase == 'TEST':
@@ -261,7 +261,7 @@ class ProtoDataSet(BaseDataSet):
                 temp_total_num = len(goal_set)
             array_label.append([i] * self.test_query)
             query_samples = []
-            shot_samples = random.sample(range(len(goal_set)), temp_total_num)
+            shot_samples = range(temp_total_num)
             for j in range(self.test_query):
                 query_samples.append(shot_samples.pop())
             for j in shot_samples:

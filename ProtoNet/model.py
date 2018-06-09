@@ -36,8 +36,8 @@ class ProtoNet(object):
         self.train_set = ProtoDataSet('../data', 
             self.way, self.query, self.shot, 
             self.test_way, self.test_query, self.test_shot, phase='TRAIN')
-        self.log_dir = log_dir + "/train"
-        self.checkpoint_dir = checkpoint_dir + "/train"
+        self.log_dir = log_dir + "/train_3"
+        self.checkpoint_dir = checkpoint_dir + "/train_3"
         self.test_set = ProtoDataSet('../data', self.way, self.query, self.shot, phase='TEST')
         self.test_log_dir = log_dir + '/test'
 
@@ -52,8 +52,9 @@ class ProtoNet(object):
     def encoder(self, x, is_training=True, reuse=False):
         with tf.variable_scope("encoder", reuse=reuse):
             linear1 = tf.nn.relu(bn(linear(x, 2048, scope='fc1'), is_training=is_training, scope='bn1'))
-            drop1 = tf.nn.dropout(linear1, keep_prob=0.8)
-            # net2 = tf.nn.relu(bn(linear(net1, 4096, scope='fc2'), is_training=is_training, scope='bn2'))            
+            drop1 = tf.nn.dropout(linear1, keep_prob=0.6)
+            # linear2 = tf.nn.relu(bn(linear(linear1, 1024, scope='fc2'), is_training=is_training, scope='bn2'))            
+            # drop2 = tf.nn.dropout(linear2, keep_prob=0.6)
             # net3 = tf.nn.relu(bn(linear(net2, 2048, scope='fc3'), is_training=is_training, scope='bn3'))
             # net4 = tf.nn.relu(bn(linear(net3, 1024, scope='fc4'), is_training=is_training, scope='bn4'))
             # net5 = tf.nn.relu(bn(linear(net4, 512, scope='fc5'), is_training=is_training, scope='bn5'))
@@ -102,8 +103,8 @@ class ProtoNet(object):
           .minimize(self.loss, var_list=vars)
 
         """ Testing """
-        test_support_output = self.encoder(tf.reshape(self.support_set, [self.way * self.shot, self.input_dim]), reuse=True)
-        test_query_output = self.encoder(tf.reshape(self.query_set, [self.way * self.query, self.input_dim]), reuse=True)
+        test_support_output = self.encoder(tf.reshape(self.support_set, [self.way * self.shot, self.input_dim]), reuse=True, is_training=False)
+        test_query_output = self.encoder(tf.reshape(self.query_set, [self.way * self.query, self.input_dim]), reuse=True, is_training=False)
         
         test_output_dim = tf.shape(test_support_output)[-1]
         test_c = tf.reduce_mean(tf.reshape(test_support_output, [self.way, self.shot, output_dim]), axis = 1)
@@ -115,6 +116,8 @@ class ProtoNet(object):
         """ Summary """
         self.loss_sum = tf.summary.scalar("loss", self.loss)
         self.acc_sum = tf.summary.scalar("acc", self.acc)
+        self.test_loss_sum = tf.summary.scalar("test_loss", self.test_loss)
+        self.test_acc_sum = tf.summary.scalar("test_acc", self.test_acc)
 
     def train(self):
 
@@ -129,8 +132,11 @@ class ProtoNet(object):
         self.writer = tf.summary.FileWriter(self.log_dir + '/' + self.model_name, self.sess.graph)
 
         # restore check-point if it exits
-        could_load, checkpoint_counter = self.load(self.checkpoint_dir)
-        if could_load and self.continue_learn:
+        if self.continue_learn:
+            could_load, checkpoint_counter = self.load(self.checkpoint_dir)
+        else:
+            could_load = False
+        if could_load:
             start_epoch = (int)(checkpoint_counter)
             start_batch_id = checkpoint_counter - start_epoch
             counter = checkpoint_counter
@@ -170,15 +176,17 @@ class ProtoNet(object):
             '''Test'''
             if epoch % 10 == 0:                
                 support_set, query_set, labels = self.train_set.get_valid_data()
-                test_loss, test_acc = self.sess.run([self.test_loss, self.test_acc], 
+                valid_loss, valid_acc = self.sess.run([self.test_loss, self.test_acc], 
                     feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
                 print("[Valid Set] Epoch: [%2d] acc: %.8f loss: %.8f" \
-                  % (epoch, test_acc, test_loss))
+                    % (epoch, valid_acc, valid_loss))
                 support_set, query_set, labels = self.test_set.next_batch()
-                test_loss, test_acc = self.sess.run([self.test_loss, self.test_acc], 
+                test_loss, test_acc, test_loss_sum, test_acc_sum = self.sess.run([self.test_loss, self.test_acc, self.test_loss_sum, self.test_acc_sum], 
                     feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
                 print("[Test Set] Epoch: [%2d] acc: %.8f loss: %.8f" \
-                  % (epoch, test_acc, test_loss))
+                    % (epoch, test_acc, test_loss))
+                self.writer.add_summary(test_loss_sum, epoch)
+                self.writer.add_summary(test_acc_sum, epoch)
                 print("=================================================")
 
 
