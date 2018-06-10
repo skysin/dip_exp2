@@ -36,8 +36,8 @@ class ProtoNet(object):
         self.train_set = ProtoDataSet('../data', 
             self.way, self.query, self.shot, 
             self.test_way, self.test_query, self.test_shot, phase='TRAIN')
-        self.log_dir = log_dir + "/train_3"
-        self.checkpoint_dir = checkpoint_dir + "/train_3"
+        self.log_dir = log_dir + "/train_4"
+        self.checkpoint_dir = checkpoint_dir + "/train_4"
         self.test_set = ProtoDataSet('../data', self.way, self.query, self.shot, phase='TEST')
         self.test_log_dir = log_dir + '/test'
 
@@ -52,7 +52,11 @@ class ProtoNet(object):
     def encoder(self, x, is_training=True, reuse=False):
         with tf.variable_scope("encoder", reuse=reuse):
             linear1 = tf.nn.relu(bn(linear(x, 2048, scope='fc1'), is_training=is_training, scope='bn1'))
-            drop1 = tf.nn.dropout(linear1, keep_prob=0.6)
+            if is_training:
+                keep_prob = 0.6
+            else:
+                keep_prob = 1.0
+            drop1 = tf.nn.dropout(linear1, keep_prob=keep_prob)
             # linear2 = tf.nn.relu(bn(linear(linear1, 1024, scope='fc2'), is_training=is_training, scope='bn2'))            
             # drop2 = tf.nn.dropout(linear2, keep_prob=0.6)
             # net3 = tf.nn.relu(bn(linear(net2, 2048, scope='fc3'), is_training=is_training, scope='bn3'))
@@ -150,7 +154,10 @@ class ProtoNet(object):
         # loop for epoch
         start_time = time.time()
         for epoch in range(start_epoch, self.epoch):
-            lr = self.init_learning_rate
+            if self.epoch < 100:
+                lr = self.init_learning_rate
+            else:
+                lr = self.init_learning_rate * 0.1
             support_set, query_set, labels = self.train_set.next_batch()
 
             # update network

@@ -7,6 +7,7 @@ import fileinput
 import tensorflow as tf
 
 from alexnet import AlexNet
+from data_augmentation import *
 
 class BaseDataSet(object):
     def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
@@ -103,7 +104,7 @@ class ProtoDataSet(BaseDataSet):
         data_dir, 
         way, query, shot, 
         test_way=None, test_query=None, test_shot=None,
-        phase="TRAIN", valid=True, gen_test=True):
+        phase="TRAIN", valid=True, gen_test=False):
 
         print("Data path: " + data_dir)
 
@@ -134,7 +135,7 @@ class ProtoDataSet(BaseDataSet):
                 #print self.valid_classes_list
                 self.total_classes -= self.test_way
                 self.set_valid_data()
-            # self.shuffle_classes_list()
+            self.shuffle_classes_list()
         else:
             print("Loading test data...")
             if gen_test or not os.path.exists(data_dir + '/train_fc7.npy') \
@@ -147,26 +148,31 @@ class ProtoDataSet(BaseDataSet):
             self.load_test_data()
             print("Finish loading!")
 
-    def gen_test_data(self, train_dir):
+    def gen_test_data(self, data_path):
         print("Generate fc7 from testing data...")
-        train_path = self.data_dir + train_dir
+        data_path = self.data_dir + data_path
+        aug_data_path = self.data_dir + '/train_augment'
 
-        train_data = BaseDataSet(train_path, 500, 50)
-        train_data.image_list = sorted(train_data.image_list)
-        train_data_set = []
-        train_label_set = []
+        test_data = BaseDataSet(data_path, 500, 50)
+        test_data.image_list = sorted(test_data.image_list)
         test_data_set = []
         test_label_set = []
-        for image_path in train_data.image_list:
-            data, label = train_data.read_image(image_path)
+        for image_path in test_data.image_list:
+            data, label = test_data.read_image(image_path)
             if '0009.jpg' in image_path or '0010.jpg' in image_path:
                 print 'test:', image_path
                 test_data_set.append(data)
                 test_label_set.append(int(label) - 1)
-            else:
-                print 'train:', image_path
-                train_data_set.append(data)
-                train_label_set.append(int(label) - 1)
+
+        train_data = BaseDataSet(aug_data_path, 500, 50)
+        train_data.image_list = sorted(train_data.image_list)
+        train_data_set = []
+        train_label_set = []
+        for image_path in train_data.image_list:
+            print 'Train:', image_path
+            data, label = train_data.read_image(image_path)
+            train_data_set.append(data)
+            train_label_set.append(int(label) - 1)
 
         train_fc7 = []
         test_fc7 = []
@@ -188,6 +194,7 @@ class ProtoDataSet(BaseDataSet):
         print('Finish generating!')
 
     def load_test_data(self):
+        con = 32
         train_fc7 = np.load(self.data_dir + '/train_fc7.npy')
         test_fc7 = np.load(self.data_dir + '/valid_fc7.npy')
         train_label = np.load(self.data_dir + '/train_label.npy')
@@ -197,8 +204,8 @@ class ProtoDataSet(BaseDataSet):
         self.test_label = np.zeros([self.way, self.query])
         for way in range(self.way):
             for shot in range(self.shot):
-                assert train_label[way * 8 + shot % 8] == way
-                self.test_support_set[way, shot, :] = train_fc7[way * 8 + shot % 8, :]
+                assert train_label[way * con + shot % con] == way
+                self.test_support_set[way, shot, :] = train_fc7[way * con + shot % con, :]
         for way in range(self.way):
             for query in range(self.query):
                 self.test_query_set[way, query, :] = test_fc7[way * 2 + query % 2, :]
@@ -225,6 +232,9 @@ class ProtoDataSet(BaseDataSet):
             shot_samples = random.sample(range(len(goal_set)), temp_total_num)
             for j in range(self.query):
                 query_samples.append(shot_samples.pop())
+            if len(shot_samples) < self.shot:
+                shot_samples.extend(random.sample(shot_samples, self.shot - len(shot_samples)))
+            assert(len(shot_samples) == self.shot)
             for j in shot_samples:
                 result_shot[i - self.cur_index].append(self.fc7[goal_set[j]])
             for j in query_samples:
