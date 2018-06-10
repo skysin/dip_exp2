@@ -51,14 +51,15 @@ class RelationNet(object):
 
     def encoder(self, x, is_training=True, reuse=False):
         with tf.variable_scope("encoder", reuse=reuse):
-            linear1 = tf.nn.relu(bn(linear(x, 2048, scope='fc1'), is_training=is_training, scope='bn1'))
-            drop1 = tf.nn.dropout(linear1, keep_prob=0.6)
+            #linear1 = tf.nn.relu(bn(linear(x, 2048, scope='fc1'), is_training=is_training, scope='bn1'))
+            #drop1 = tf.nn.dropout(linear1, keep_prob=0.6)
             # linear2 = tf.nn.relu(bn(linear(linear1, 1024, scope='fc2'), is_training=is_training, scope='bn2'))            
             # drop2 = tf.nn.dropout(linear2, keep_prob=0.6)
             # net3 = tf.nn.relu(bn(linear(net2, 2048, scope='fc3'), is_training=is_training, scope='bn3'))
             # net4 = tf.nn.relu(bn(linear(net3, 1024, scope='fc4'), is_training=is_training, scope='bn4'))
             # net5 = tf.nn.relu(bn(linear(net4, 512, scope='fc5'), is_training=is_training, scope='bn5'))
-            out = bn(linear(drop1, self.output_dim, scope='fc6'), is_training=is_training, scope='bn6')
+            #out = bn(linear(drop1, self.output_dim, scope='fc6'), is_training=is_training, scope='bn6')
+            out = bn(linear(x, self.output_dim, scope='fc6'), is_training=is_training, scope='bn6')
             # tf.summary.histogram('gradient5', tf.gradients(out, net5))
         # self.writer.histogram('bn6', out)
         return out
@@ -86,10 +87,10 @@ class RelationNet(object):
 
     def relation_net(self, x, is_training=True, reuse=False):
         with tf.variable_scope("relation", reuse=reuse):
-            out = tf.nn.relu(bn(linear(x, 256, scope='fc1'), is_training=is_training, scope='bn1'))
-            out = tf.nn.relu(bn(linear(out, 256, scope='fc2'), is_training=is_training, scope='bn2'))
-            out = tf.nn.relu(bn(linear(out, 8, scope='fc3'), is_training=is_training, scope='bn3'))
-            out = linear(out, 1, scope='fc4')
+            out = tf.nn.relu(bn(linear(x, 256, scope='fc2'), is_training=is_training, scope='bn2'))
+            out = tf.nn.relu(bn(linear(out, 1, scope='fc3'), is_training=is_training, scope='bn3'))
+            #out = tf.nn.relu(bn(linear(out, 8, scope='fc3'), is_training=is_training, scope='bn3'))
+            #out = linear(out, 1, scope='fc3')
             # tf.summary.histogram('gradient5', tf.gradients(out, net5))
         # self.writer.histogram('bn6', out)
         return out
@@ -114,7 +115,7 @@ class RelationNet(object):
         concat_feature = self.get_concat_feature(query_output, c)       
         print "concat shape", concat_feature.shape
         #raw_input()
-        relation = tf.reshape(self.relation_net(concat_feature), [self.way * self.query, self.way])
+        relation = tf.reshape(self.relation_net(concat_feature, is_training=True, reuse=False), [self.way * self.query, self.way])
         label_one_hot = tf.reshape(self.label_one_hot, [self.way * self.query, self.way])
         #Elog_p = tf.reshape(tf.nn.log_softmax(-dists), [self.way, self.query, -1])
         self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=relation, labels=label_one_hot))       
@@ -133,14 +134,15 @@ class RelationNet(object):
 
         """ Testing """
         test_support_output = self.encoder(tf.reshape(self.support_set, [self.way * self.shot, self.input_dim]), reuse=True, is_training=False)
-        test_query_output = self.encoder(tf.reshape(self.query_set, [self.way * self.query, self.input_dim]), reuse=True, is_training=False)
-
-        test_concat_feature = self.get_concat_feature(test_query_output, test_c)      test_relation = tf.reshape(self.relation_net(test_concat_feature), [self.way * self.query, self.way])
+        test_query_output = self.encoder(tf.reshape(self.query_set, [self.way * self.query, self.input_dim]), reuse=True, is_training=False) 
+        test_c = tf.reduce_mean(tf.reshape(support_output, [self.way, self.shot, output_dim]), axis = 1) 
+        test_concat_feature = self.get_concat_feature(test_query_output, test_c)
+        test_relation = tf.reshape(self.relation_net(test_concat_feature, is_training=False, reuse=True), [self.way * self.query, self.way])
         test_label_one_hot = tf.reshape(self.label_one_hot, [self.way * self.query, self.way])
         #Elog_p = tf.reshape(tf.nn.log_softmax(-dists), [self.way, self.query, -1])
-        self.test = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=test_relation, labels=test_label_one_hot))       
+        self.test_loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=test_relation, labels=test_label_one_hot))       
         self.test_pred = tf.nn.softmax(test_relation)
-        self.testacc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(self.test_pred, axis=-1), tf.reshape(self.label, [-1]))))
+        self.test_acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(self.test_pred, axis=-1), tf.reshape(self.label, [-1]))))
 
         """ Summary """
         self.loss_sum = tf.summary.scalar("loss", self.loss)
@@ -151,8 +153,8 @@ class RelationNet(object):
     def train(self):
 
         # initialize all variables
-        tf.global_variables_initializer().run()
-
+        initop = tf.global_variables_initializer()
+        self.sess.run([initop])
         # saver to save model
         self.saver = tf.train.Saver()
 
