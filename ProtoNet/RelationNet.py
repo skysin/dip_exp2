@@ -134,14 +134,13 @@ class RelationNet(object):
         """ Testing """
         test_support_output = self.encoder(tf.reshape(self.support_set, [self.way * self.shot, self.input_dim]), reuse=True, is_training=False)
         test_query_output = self.encoder(tf.reshape(self.query_set, [self.way * self.query, self.input_dim]), reuse=True, is_training=False)
-        
-        test_output_dim = tf.shape(test_support_output)[-1]
-        test_c = tf.reduce_mean(tf.reshape(test_support_output, [self.way, self.shot, output_dim]), axis = 1)
-        test_dists = self.euclidean_dist(test_query_output, test_c)
-        test_log_p = tf.reshape(tf.nn.log_softmax(-test_dists), [self.way, self.query, -1])
-        self.test_loss = -tf.reduce_mean(tf.reshape(tf.reduce_sum(tf.multiply(self.label_one_hot, test_log_p), axis=-1), [-1]))
-        print self.label.shape, 
-        self.test_acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(test_log_p, axis=-1), tf.reshape(self.label, [-1]))))
+
+        test_concat_feature = self.get_concat_feature(test_query_output, test_c)      test_relation = tf.reshape(self.relation_net(test_concat_feature), [self.way * self.query, self.way])
+        test_label_one_hot = tf.reshape(self.label_one_hot, [self.way * self.query, self.way])
+        #Elog_p = tf.reshape(tf.nn.log_softmax(-dists), [self.way, self.query, -1])
+        self.test = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=test_relation, labels=test_label_one_hot))       
+        self.test_pred = tf.nn.softmax(test_relation)
+        self.testacc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(self.test_pred, axis=-1), tf.reshape(self.label, [-1]))))
 
         """ Summary """
         self.loss_sum = tf.summary.scalar("loss", self.loss)
