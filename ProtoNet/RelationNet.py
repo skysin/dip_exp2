@@ -73,14 +73,18 @@ class RelationNet(object):
     def get_concat_feature(self, x, y):
         N, D = tf.shape(x)[0], tf.shape(x)[1]
         M = tf.shape(y)[0]
+        N = self.way * self.query
+        M = self.way
         x = tf.tile(tf.expand_dims(x, axis=1), (1, M, 1))
         y = tf.tile(tf.expand_dims(y, axis=0), (N, 1, 1))
         x = tf.reshape(x, [N * M, -1])
         y = tf.reshape(y, [N * M, -1])
+        print "x shape", x.shape
+        print "y shape", y.shape
         concat_feature = tf.concat([x, y], axis=1)
         return concat_feature
 
-    def relation_net(self, x):
+    def relation_net(self, x, is_training=True, reuse=False):
         with tf.variable_scope("relation", reuse=reuse):
             out = tf.nn.relu(bn(linear(x, 256, scope='fc1'), is_training=is_training, scope='bn1'))
             out = tf.nn.relu(bn(linear(out, 256, scope='fc2'), is_training=is_training, scope='bn2'))
@@ -97,9 +101,9 @@ class RelationNet(object):
         """ Graph Input """
         self.learning_rate = tf.placeholder(tf.float32, shape=[])
         # images
-        self.support_set = tf.placeholder(tf.float32, [None, None, self.input_dim], name='support_set')
-        self.query_set = tf.placeholder(tf.float32, [None, None, self.input_dim], name='query_set')
-        self.label = tf.placeholder(tf.int64, [None, None], name='ground_true_label')
+        self.support_set = tf.placeholder(tf.float32, [self.way, self.shot, self.input_dim], name='support_set')
+        self.query_set = tf.placeholder(tf.float32, [self.way, self.query, self.input_dim], name='query_set')
+        self.label = tf.placeholder(tf.int64, [self.way, self.query], name='ground_true_label')
         self.label_one_hot = tf.one_hot(self.label, depth = self.way)
 
         support_output = self.encoder(tf.reshape(self.support_set, [self.way * self.shot, self.input_dim]))
@@ -107,12 +111,15 @@ class RelationNet(object):
 
         output_dim = tf.shape(support_output)[-1]
         c = tf.reduce_mean(tf.reshape(support_output, [self.way, self.shot, output_dim]), axis = 1) 
-        concat_feature = self.get_concat_feature(query, c)       
+        concat_feature = self.get_concat_feature(query_output, c)       
+        print "concat shape", concat_feature.shape
+        #raw_input()
         relation = tf.reshape(self.relation_net(concat_feature), [self.way * self.query, self.way])
         label_one_hot = tf.reshape(self.label_one_hot, [self.way * self.query, self.way])
         #Elog_p = tf.reshape(tf.nn.log_softmax(-dists), [self.way, self.query, -1])
         self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=relation, labels=label_one_hot))       
-        self.acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(log_p, axis=-1), self.label)))
+        self.train_pred = tf.nn.softmax(relation)
+        self.acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(self.train_pred, axis=-1), tf.reshape(self.label, [-1]))))
 
         """ Training """
         # divide trainable variables into a group for D and a group for G
@@ -133,7 +140,8 @@ class RelationNet(object):
         test_dists = self.euclidean_dist(test_query_output, test_c)
         test_log_p = tf.reshape(tf.nn.log_softmax(-test_dists), [self.way, self.query, -1])
         self.test_loss = -tf.reduce_mean(tf.reshape(tf.reduce_sum(tf.multiply(self.label_one_hot, test_log_p), axis=-1), [-1]))
-        self.test_acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(test_log_p, axis=-1), self.label)))
+        print self.label.shape, 
+        self.test_acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(test_log_p, axis=-1), tf.reshape(self.label, [-1]))))
 
         """ Summary """
         self.loss_sum = tf.summary.scalar("loss", self.loss)
