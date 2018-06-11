@@ -22,7 +22,6 @@ class KNN(object):
         self.label_set = []
         self.knn_list = []
         self.kneighbors = kneighbors
-        #self.pca = PCA(n_components=4096)
 
         self.inputs = tf.placeholder(tf.float32, [1, 227, 227, 3], name="input_image")
         self.labels = tf.placeholder(tf.float32, [1, 50], name='label')
@@ -33,37 +32,16 @@ class KNN(object):
         for _i in range(7):
             nn = KNeighborsClassifier(n_neighbors=kneighbors)
             self.knn_list.append(nn)
-            #clf = svm.SVC()
-            #self.knn_list.append(clf)
-
         pass
 
     def load_training_data(self, img_num):
         ds = DataSet(self.train_data_path, 1, self.class_num)
-        
             
         for i in range(img_num):
-            #print(i)
             img, label = ds.next_batch()
             out1, out2, out3, out4, out5, out6, out7 = self.sess.run([self.alexnet.norm1, self.alexnet.norm2, self.alexnet.conv3, self.alexnet.conv4,
                             self.alexnet.pool5, self.alexnet.fc6, self.alexnet.fc7], feed_dict={self.alexnet.X: img, self.labels: label})
-            '''
-            print(out1.shape)
-            print(out2.shape)
-            print(out3.shape)
-            print(out4.shape)
-            print(out5.shape)
-            print(out6.shape)
-            print(out7.shape)
             
-            (1, 27, 27, 96)
-            (1, 13, 13, 256)
-            (1, 13, 13, 384)
-            (1, 13, 13, 384)
-            (1, 6, 6, 256)
-            (1, 4096)
-            (1, 4096)
-            '''
             self.training_data[0].append(out1[0].reshape(1, 27 * 27 * 96)[0])
             self.training_data[1].append(out2[0].reshape(1, 13 * 13 * 256)[0])
             self.training_data[2].append(out3[0].reshape(1, 13 * 13 * 384)[0])
@@ -73,12 +51,6 @@ class KNN(object):
             self.training_data[6].append(out7[0])
             self.label_set.append(np.argmax(label, axis=1)[0])
             
-            #if i == (img_num - 1):
-            #    self.build_model()
-            
-            #if (i + 1) % 250 == 0:
-                #self.build_model()
-
         self.calibration_size = 400
         self.calibration_data = [self.training_data[j][img_num-self.calibration_size:img_num] for j in range(7)]
         self.calibration_label = self.label_set[img_num-self.calibration_size:img_num]
@@ -87,19 +59,13 @@ class KNN(object):
 
         self.build_model()
         self.A = []
-        #total = 7 * self.kneighbors
         for i in range(self.calibration_size):
-            target_label = np.argmax(self.calibration_label[i], axis=1)[0]
+            target_label = self.calibration_label[i]
             tar = []
             for k in range(7):
-                #print(self.calibration_data[k][i].shape)
                 tp = [self.label_set[int(j)] for j in self.knn_list[k].kneighbors([self.calibration_data[k][i]], n_neighbors=self.kneighbors, return_distance=False)[0]]
                 tar.extend(tp)
-            #print(total, np.sum(np.equal(tar, target_label)))
-            #print("label=", target_label)
-            #print(tar)
-            #self.A.append(np.sum())
-            total = np.sum(np.equal(tar, target_label))
+            total = np.sum(np.not_equal(tar, target_label))
             self.A.append(total)
                 
            
@@ -113,7 +79,6 @@ class KNN(object):
         for i in range(img_num):
             print(i)
             img, label = ds.next_batch()
-            #print(img.shape, label.shape)
             out1, out2, out3, out4, out5, out6, out7 = self.sess.run([self.alexnet.norm1, self.alexnet.norm2, self.alexnet.conv3, self.alexnet.conv4,
                             self.alexnet.pool5, self.alexnet.fc6, self.alexnet.fc7], feed_dict={self.alexnet.X: img, self.labels: label})
 
@@ -131,14 +96,13 @@ class KNN(object):
 
             tar.clear()
             for k in range(7):
-                #print(k)
                 tp = [self.label_set[int(j)] for j in self.knn_list[k].kneighbors(source[k], n_neighbors=kneighbor, return_distance=False)[0]]
                 tar.extend(tp)
 
             max = 0
             m_label = -1
             for k_label in range(self.class_num):
-                alpha = np.sum(np.equal(tar, k_label))
+                alpha = np.sum(np.not_equal(tar, k_label))
                 pj = np.sum(np.greater_equal(self.A, alpha))
                 if pj >= max:
                     max = pj
@@ -147,93 +111,21 @@ class KNN(object):
             if m_label == target_label:
                 count += 1
 
-            if (i + 1) % 20 = 0:
+            if (i + 1) % 20 == 0:
                 print("%d / %d, accuracy: %f" % ((i + 1), img_num, float(count / (i + 1))))
-
-            
-            '''
-            get_target = max(tar, key = tar.count)
-
-            print(target_label, get_target)
-
-            if get_target == target_label:
-                count += 1
-
-            if i == img_num - 1:
-                print("k: %d, accuracy: %f" % (kneighbor, float(count / img_num)))
-
-            
-            print("label: ", np.argmax(label, axis=1)[0])
-            ss = []
-            ss.append(out1[0].reshape(1, 27 * 27 * 96)[0])
-            #print("out1: ", self.knn_list[0].predict(ss))
-            #print("out1: ", self.knn_list[0].kneighbors(ss, 5, return_distance=False))
-            print("out1: ", [self.label_set[int(i)] for i in self.knn_list[0].kneighbors(ss, 5, return_distance=False)[0]])
-            #print("out1: ", self.knn_list[0].predict(ss))
-            ss.clear()
-            ss.append(out2[0].reshape(1, 13 * 13 * 256)[0])
-            #print("out2: ", self.knn_list[1].predict(ss))
-            print("out2: ", [self.label_set[int(i)] for i in self.knn_list[1].kneighbors(ss, 5, return_distance=False)[0]])
-            #print("out2: ", self.knn_list[1].predict(ss))
-            ss.clear()
-            ss.append(out3[0].reshape(1, 13 * 13 * 384)[0])
-            #print("out3: ", self.knn_list[2].predict(ss))
-            print("out3: ", [self.label_set[int(i)] for i in self.knn_list[2].kneighbors(ss, 5, return_distance=False)[0]])
-            #print("out3: ", self.knn_list[2].predict(ss))
-            ss.clear()
-            ss.append(out4[0].reshape(1, 13 * 13 * 384)[0])
-            #print("out4: ", self.knn_list[3].predict(ss))
-            print("out4: ", [self.label_set[int(i)] for i in self.knn_list[3].kneighbors(ss, 5, return_distance=False)[0]])
-            #print("out4: ", self.knn_list[3].predict(ss))
-            ss.clear()
-            ss.append(out5[0].reshape(1, 6 * 6 * 256)[0])
-            #print("out5: ", self.knn_list[4].predict(ss))
-            print("out5: ", [self.label_set[int(i)] for i in self.knn_list[4].kneighbors(ss, 5, return_distance=False)[0]])
-            #print("out5: ", self.knn_list[4].predict(ss))
-            ss.clear()
-            ss.append(out6[0])
-            #print("out6: ", self.knn_list[5].predict(ss))
-            print("out6: ", [self.label_set[int(i)] for i in self.knn_list[5].kneighbors(ss, 5, return_distance=False)[0]])
-            #print("out6: ", self.knn_list[5].predict(ss))
-            ss.clear()
-            ss.append(out7[0])
-            #print("out7: ", self.knn_list[6].predict(ss))
-            print("out7: ", [self.label_set[int(i)] for i in self.knn_list[6].kneighbors(ss, 5, return_distance=False)[0]])
-            #print("out7: ", self.knn_list[6].predict(ss))
-            ss.clear()
-            '''
-                
-
-        pass
+          
 
     def build_model(self):
         for i in range(7):
             print("build ", i)
-            print(len(self.training_data))	
-            print(len(self.training_data[i]), len(self.label_set))
             try:
                 self.knn_list[i].fit(self.training_data[i], self.label_set)
                 self.training_data[i].clear()
-                #self.label_set.clear()
             except:
-                print("something wrong")
-
-        #self.label_set.clear()
-        pass
-
-    
-
-    
+                print("something wrong")  
 
 if __name__ == "__main__":
     with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
-        #knn = KNN(sess, 50, "../data/training/", "../data/test/")
         knn = KNN(sess, 50, "../data/train_augment/", "../data/test_augment/", 10)
         knn.load_training_data(1600)
         knn.load_testing_data(400)
-        
-
-    
-
-
-
