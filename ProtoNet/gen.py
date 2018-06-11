@@ -13,7 +13,7 @@ from alexnet import AlexNet
 def flip(img):
     return img[:,::-1,:]
 
-def random_crop(img, factor = 0.75):
+def random_crop(img, factor = 0.95):
     h, w, c = img.shape
     h_out = int(h * factor)
     w_out = int(w * factor)
@@ -61,11 +61,12 @@ if __name__ == "__main__":
                 data = cv2.imread(data_dir + '/' + dir_name + '/' + file_name)
                 label = int(file_name.split('_')[0]) - 1
                 print '[Train]', file_name, label
-                aug_data = data_augment(data, crop_num)
                 if use_valid and (file_name.split('_')[1] == '0009.jpg' or file_name.split('_')[1] == '0010.jpg'):
+                    aug_data = data_augment(data, 4)
                     test_data.extend(aug_data)
                     test_label.extend([label] * len(aug_data))
                 else:
+                    aug_data = data_augment(data, 4)
                     train_data.extend(aug_data)
                     train_label.extend([label] * len(aug_data))
 

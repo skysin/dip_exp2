@@ -180,8 +180,8 @@ class ProtoNet(object):
             counter += 1
 
             '''Test'''
-            if epoch % 10 == 0:
-                self.test()
+            if epoch > 0 and epoch % 20 == 0:
+                self.test(epoch)
 
         # save model for final step
         self.save(self.checkpoint_dir, self.epoch)
@@ -197,10 +197,14 @@ class ProtoNet(object):
 
     def candidate_next_round(self, batch_result, num):
         counter = Counter(batch_result).most_common(num)
-        print counter
-        return [item[0] for item in counter]
+        candidate = [item[0] for item in counter]
+        if len(candidate) < num:
+            others = list(set(range(self.test_way)) - set(candidate))
+            candidate.extend(random.sample(others, num - len(candidate)))
+        return candidate
 
-    def test(self):
+    def test(self, epoch):
+        repeat_n = 5
         test_fc7 = self.data.test_fc7
         test_label = self.data.test_label
         
@@ -216,50 +220,50 @@ class ProtoNet(object):
             for i in range(0, len(candidates), self.test_way):
                 round_candidate = candidates[i : i + self.test_way]
                 batch_result = []
-                for repeats in range(5):
+                for repeats in range(repeat_n):
                     support_set, _, _ = self.data.repeat_test_batch(round_candidate)
                     test_log_p = self.sess.run([self.test_log_p],
                         feed_dict={self.support_set: support_set, self.query_set: query_set})
                     batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
-                candidate_2.extend(round_candidate[self.candidate_next_round(batch_result, 2)])
+                for idx in self.candidate_next_round(batch_result, 4):
+                    candidate_2.append(round_candidate[idx])
+            # print 'condidate_2', candidate_2
 
             # Second round
             candidate_3 = []
             for i in range(0, len(candidate_2), self.test_way):
                 round_candidate = candidate_2[i : i + self.test_way]
+                # print round_candidate
                 batch_result = []
-                for repeats in range(5):
+                for repeats in range(repeat_n):
                     support_set, _, _ = self.data.repeat_test_batch(round_candidate)
+                    # print support_set
                     test_log_p = self.sess.run([self.test_log_p],
                         feed_dict={self.support_set: support_set, self.query_set: query_set})
                     batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
-                candidate_3.extend(round_candidate[self.candidate_next_round(batch_result, 2)])
+                for idx in self.candidate_next_round(batch_result, 5):
+                    candidate_3.append(round_candidate[idx])
+            # print 'candidate_3', candidate_3
 
             # Final round
-            round_candidate = candidate_3[0 : self.test_way]
-            candidate_4 = candidate_3[self.test_way : ]
+            # print candidate_3
+            # round_candidate = candidate_3[0 : self.test_way]
+            # candidate_4 = candidate_3[self.test_way : ]
             batch_result = []
-            for repeats in range(5):
-                support_set, _, _ = self.data.repeat_test_batch(round_candidate)
+            for repeats in range(repeat_n):
+                support_set, _, _ = self.data.repeat_test_batch(candidate_3)
                 test_log_p = self.sess.run([self.test_log_p],
                     feed_dict={self.support_set: support_set, self.query_set: query_set})
                 batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
-            candidate_4.extend(round_candidate[self.candidate_next_round(batch_result, 3)])
-
-            batch_result = []
-            for repeats in range(5):
-                support_set, _, _ = self.data.repeat_test_batch(candidate_4)
-                test_log_p = self.sess.run([self.test_log_p],
-                    feed_dict={self.support_set: support_set, self.query_set: query_set})
-                batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
-            result = round_candidate[self.candidate_next_round(batch_result, 1)][0]
+            result = candidate_3[self.candidate_next_round(batch_result, 1)[0]]
+            # print result, test_label[row]
             pred.append(result)
 
-        pred = np.array(pred)
-        sum_cnt = test_fc7.shape[0]
+        sum_cnt = test_fc7.shape[0] / 8
         correct_cnt = 0
         for i in range(0, test_fc7.shape[0], 8):
-            result = self.candidate_next_round(pred[i : i + 8])[0]
+            print pred[i: i+8]
+            result = self.candidate_next_round(pred[i : i + 8], 1)[0]
             if result == test_label[i]:
                 correct_cnt += 1
 

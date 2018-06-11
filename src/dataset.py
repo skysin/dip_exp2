@@ -134,7 +134,6 @@ class ProtoDataSet(BaseDataSet):
         print("[Dataset] Loading test data...")
         self.test_label_set = [[] for i in range(50)]
         self.test_total_classes = 50
-        self.test_class_batch = 50 / self.test_way
         assert(50 % self.test_way == 0)
         self.test_class_index = 0 - self.test_way
         self.test_cur_index = 0 - self.test_way * self.test_query
@@ -191,6 +190,7 @@ class ProtoDataSet(BaseDataSet):
             shot_samples = random.sample(range(len(goal_set)), self.test_shot)
             for j in shot_samples:
                 result_shot[i].append(self.train_fc7[goal_set[j]])
+                # print j, self.train_fc7[goal_set[j]]
 
         result_query = [[] for i in range(self.test_way)]
         result_label = [[] for i in range(self.test_way)]

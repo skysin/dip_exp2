@@ -25,13 +25,13 @@ def parse_args():
     parser.add_argument('--load', type=int, default=0)
 
 
-    parser.add_argument('--way', type=int, default=5, metavar='WAY',
+    parser.add_argument('--way', type=int, default=10, metavar='WAY',
                         help='The number of ways in training')
     parser.add_argument('--query', type=int, default=8, metavar='QUERY',
                         help='The number of query in training')
     parser.add_argument('--shot', type=int, default=32, metavar='SHOT',
                         help='The number of examples per class used in training')
-    parser.add_argument('--test_way', type=int, default=5, metavar='TEST_WAY', 
+    parser.add_argument('--test_way', type=int, default=10, metavar='TEST_WAY', 
                         help='The number of ways in testing')
     parser.add_argument('--test_query', type=int, default=8, metavar='TEST_QUERY',
                         help='The number of query in testing')
