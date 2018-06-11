@@ -298,6 +298,7 @@ class ProtoNet(object):
             self.test_way, self.test_query, self.test_shot)
         label = np.zeros([2500])
         for batch in range(dataset.test_batch_num):
+            dataset.next_test_batch()
             batch_result = []
             for repeat in range(5):
                 support_set, query_set, labels = dataset.repeat_test_batch(range(50))
@@ -313,6 +314,9 @@ class ProtoNet(object):
                 counter = Counter(l).most_common(1)
                 label[labels[i]] = counter[0][0] + 1
         
+        with open('output.txt', 'w') as f:
+            for i in range(2500):
+                f.write(str(int(label[i])) + '\n')
 
         print "[.] Predict finish!" 
     
