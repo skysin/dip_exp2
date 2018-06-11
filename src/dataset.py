@@ -178,22 +178,19 @@ class ProtoDataSet(BaseDataSet):
 
         for i, val in enumerate(self.train_label):
             self.test_label_set[val].append(i)
-        self.test_batch_num = 16 / self.test_query
+        self.test_batch_num = self.test_fc7.shape[0] / (self.test_query * self.test_way)
         assert(self.test_fc7.shape[0] % (self.test_query * self.test_way) == 0)
-
-    def next_test_class(self):
-        self.test_class_index = (self.test_class_index + self.test_way) % 50
 
     def next_test_batch(self):
         self.test_cur_index = (self.test_cur_index + self.test_way * self.test_query) % self.test_fc7.shape[0]
 
-    def repeat_test_batch(self):
+    def repeat_test_batch(self, candidates):
         result_shot = [[] for i in range(self.test_way)]
-        for i in range(self.test_class_index, self.test_class_index + self.test_way):
-            goal_set = self.test_label_set[i]
+        for i, candidate in enumerate(candidates):
+            goal_set = self.test_label_set[candidate]
             shot_samples = random.sample(range(len(goal_set)), self.test_shot)
             for j in shot_samples:
-                result_shot[i - self.test_class_index].append(self.train_fc7[goal_set[j]])
+                result_shot[i].append(self.train_fc7[goal_set[j]])
 
         result_query = [[] for i in range(self.test_way)]
         result_label = [[] for i in range(self.test_way)]
@@ -201,7 +198,7 @@ class ProtoDataSet(BaseDataSet):
         for i in range(self.test_way):
             for j in range(self.test_query):
                 result_query[i].append(self.test_fc7[cur_index])
-                result_label[i].append(self.test_label[cur_index] - self.test_class_index)
+                result_label[i].append(self.test_label[cur_index])
                 cur_index = (cur_index + 1) % self.test_fc7.shape[0]
         return np.array(result_shot), np.array(result_query), np.array(result_label)
 

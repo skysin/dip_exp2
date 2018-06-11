@@ -11,6 +11,7 @@ import numpy as np
 from ops import *
 from utils import *
 from dataset import ProtoDataSet
+from collections import Counter
 
 class ProtoNet(object):
     model_name = "ProtoNet"  # name for checkpoint
@@ -33,13 +34,11 @@ class ProtoNet(object):
         self.test_shot = test_shot
         self.test_query = test_query
 
-        self.train_set = ProtoDataSet('../data', 
+        self.data = ProtoDataSet('../data', 
             self.way, self.query, self.shot, 
-            self.test_way, self.test_query, self.test_shot, phase='TRAIN')
-        self.log_dir = log_dir + "/train_4"
-        self.checkpoint_dir = checkpoint_dir + "/train_4"
-        self.test_set = ProtoDataSet('../data', self.way, self.query, self.shot, phase='TEST')
-        self.test_log_dir = log_dir + '/test'
+            self.test_way, self.test_query, self.test_shot)
+        self.log_dir = log_dir + "/train_6"
+        self.checkpoint_dir = checkpoint_dir + "/train_6"
 
         # parameters
         self.input_dim = 4096
@@ -107,15 +106,15 @@ class ProtoNet(object):
           .minimize(self.loss, var_list=vars)
 
         """ Testing """
-        test_support_output = self.encoder(tf.reshape(self.support_set, [self.way * self.shot, self.input_dim]), reuse=True, is_training=False)
-        test_query_output = self.encoder(tf.reshape(self.query_set, [self.way * self.query, self.input_dim]), reuse=True, is_training=False)
+        self.test_support_output = self.encoder(tf.reshape(self.support_set, [self.way * self.shot, self.input_dim]), reuse=True, is_training=False)
+        self.test_query_output = self.encoder(tf.reshape(self.query_set, [self.way * self.query, self.input_dim]), reuse=True, is_training=False)
         
-        test_output_dim = tf.shape(test_support_output)[-1]
-        test_c = tf.reduce_mean(tf.reshape(test_support_output, [self.way, self.shot, output_dim]), axis = 1)
-        test_dists = self.euclidean_dist(test_query_output, test_c)
-        test_log_p = tf.reshape(tf.nn.log_softmax(-test_dists), [self.way, self.query, -1])
-        self.test_loss = -tf.reduce_mean(tf.reshape(tf.reduce_sum(tf.multiply(self.label_one_hot, test_log_p), axis=-1), [-1]))
-        self.test_acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(test_log_p, axis=-1), self.label)))
+        test_output_dim = tf.shape(self.test_support_output)[-1]
+        test_c = tf.reduce_mean(tf.reshape(self.test_support_output, [self.way, self.shot, output_dim]), axis = 1)
+        test_dists = self.euclidean_dist(self.test_query_output, test_c)
+        self.test_log_p = tf.reshape(tf.nn.log_softmax(-test_dists), [self.way, self.query, -1])
+        self.test_loss = -tf.reduce_mean(tf.reshape(tf.reduce_sum(tf.multiply(self.label_one_hot, self.test_log_p), axis=-1), [-1]))
+        self.test_acc = tf.reduce_mean(tf.to_float(tf.equal(tf.argmax(self.test_log_p, axis=-1), self.label)))
 
         """ Summary """
         self.loss_sum = tf.summary.scalar("loss", self.loss)
@@ -158,7 +157,7 @@ class ProtoNet(object):
                 lr = self.init_learning_rate
             else:
                 lr = self.init_learning_rate * 0.1
-            support_set, query_set, labels = self.train_set.next_batch()
+            support_set, query_set, labels = self.data.next_batch()
 
             # update network
             _, loss_summary_str, acc_summary_str, loss, acc, summary = \
@@ -181,25 +180,92 @@ class ProtoNet(object):
             counter += 1
 
             '''Test'''
-            if epoch % 10 == 0:                
-                support_set, query_set, labels = self.train_set.get_valid_data()
-                valid_loss, valid_acc = self.sess.run([self.test_loss, self.test_acc], 
-                    feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
-                print("[Valid Set] Epoch: [%2d] acc: %.8f loss: %.8f" \
-                    % (epoch, valid_acc, valid_loss))
-                support_set, query_set, labels = self.test_set.next_batch()
-                test_loss, test_acc, test_loss_sum, test_acc_sum = self.sess.run([self.test_loss, self.test_acc, self.test_loss_sum, self.test_acc_sum], 
-                    feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
-                print("[Test Set] Epoch: [%2d] acc: %.8f loss: %.8f" \
-                    % (epoch, test_acc, test_loss))
-                self.writer.add_summary(test_loss_sum, epoch)
-                self.writer.add_summary(test_acc_sum, epoch)
-                print("=================================================")
-
-
+            if epoch % 10 == 0:
+                self.test()
 
         # save model for final step
         self.save(self.checkpoint_dir, self.epoch)
+
+    def get_result(self, results):
+        summary = np.zeros([self.test_way, self.test_query, self.test_way])
+        for result in results:
+            summary += tf.one_hot(tf.argmax(result, axis=-1), depth = self.test_way).eval()
+        summary = summary.reshape([self.test_way * self.test_query, -1])
+        ans = summary[0::8] + summary[1::8] + summary[2::8] + summary[3::8] + summary[4::8] + summary[5::8] + summary[6::8] + summary[7::8]
+        ans = np.argmax(ans, axis=1)
+        return ans
+
+    def candidate_next_round(self, batch_result, num):
+        counter = Counter(batch_result).most_common(num)
+        print counter
+        return [item[0] for item in counter]
+
+    def test(self):
+        test_fc7 = self.data.test_fc7
+        test_label = self.data.test_label
+        
+        query_set = np.zeros([self.test_way, self.test_query, test_fc7.shape[1]])
+        pred = []
+
+        for row in range(test_fc7.shape[0]):
+            candidates = range(50)
+            query_set = np.tile(test_fc7[row].reshape([1, 1, test_fc7.shape[1]]), (self.test_way, self.test_query, 1))
+            
+            # First round
+            candidate_2 = []
+            for i in range(0, len(candidates), self.test_way):
+                round_candidate = candidates[i : i + self.test_way]
+                batch_result = []
+                for repeats in range(5):
+                    support_set, _, _ = self.data.repeat_test_batch(round_candidate)
+                    test_log_p = self.sess.run([self.test_log_p],
+                        feed_dict={self.support_set: support_set, self.query_set: query_set})
+                    batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
+                candidate_2.extend(round_candidate[self.candidate_next_round(batch_result, 2)])
+
+            # Second round
+            candidate_3 = []
+            for i in range(0, len(candidate_2), self.test_way):
+                round_candidate = candidate_2[i : i + self.test_way]
+                batch_result = []
+                for repeats in range(5):
+                    support_set, _, _ = self.data.repeat_test_batch(round_candidate)
+                    test_log_p = self.sess.run([self.test_log_p],
+                        feed_dict={self.support_set: support_set, self.query_set: query_set})
+                    batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
+                candidate_3.extend(round_candidate[self.candidate_next_round(batch_result, 2)])
+
+            # Final round
+            round_candidate = candidate_3[0 : self.test_way]
+            candidate_4 = candidate_3[self.test_way : ]
+            batch_result = []
+            for repeats in range(5):
+                support_set, _, _ = self.data.repeat_test_batch(round_candidate)
+                test_log_p = self.sess.run([self.test_log_p],
+                    feed_dict={self.support_set: support_set, self.query_set: query_set})
+                batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
+            candidate_4.extend(round_candidate[self.candidate_next_round(batch_result, 3)])
+
+            batch_result = []
+            for repeats in range(5):
+                support_set, _, _ = self.data.repeat_test_batch(candidate_4)
+                test_log_p = self.sess.run([self.test_log_p],
+                    feed_dict={self.support_set: support_set, self.query_set: query_set})
+                batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
+            result = round_candidate[self.candidate_next_round(batch_result, 1)][0]
+            pred.append(result)
+
+        pred = np.array(pred)
+        sum_cnt = test_fc7.shape[0]
+        correct_cnt = 0
+        for i in range(0, test_fc7.shape[0], 8):
+            result = self.candidate_next_round(pred[i : i + 8])[0]
+            if result == test_label[i]:
+                correct_cnt += 1
+
+        print("[Test Set Summary] Epoch: [%2d] acc: %.8f" \
+            % (epoch, 1.0 * correct_cnt / sum_cnt))
+        print("=================================================")
     
     def pred(self):
 
