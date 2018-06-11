@@ -14,6 +14,8 @@ def flip(img):
     return img[:,::-1,:]
 
 def random_crop(img, factor = 0.95):
+    if factor >= 1:
+        return img
     h, w, c = img.shape
     h_out = int(h * factor)
     w_out = int(w * factor)
@@ -23,20 +25,20 @@ def random_crop(img, factor = 0.95):
     return output
 
 def data_augment(data, crop_num):
+    l = [0.6, 0.6, 0.6, 0.6, 0.8, 0.8, 0.9, 1.0]
     aug = []
     for i in range(crop_num):
-        temp = cv2.resize(random_crop(data), (227, 227)).astype(np.float32)
+        temp = cv2.resize(random_crop(data, l[i]), (227, 227)).astype(np.float32)
         vgg_mean = np.array([103.939, 116.779, 123.68])
         temp =  temp - vgg_mean
         aug.append(temp)
-        aug.append(flip(temp))
     return aug
 
 if __name__ == "__main__":
     desc = "Data preparation for Prototypical Network"
     parser = argparse.ArgumentParser(description=desc)
     parser.add_argument('--use_valid', type=int, default=1)
-    parser.add_argument('--crop_num', type=int, default=4)
+    parser.add_argument('--crop_num', type=int, default=8)
     args = parser.parse_args()
 
     use_valid = (args.use_valid == 1)
@@ -62,11 +64,11 @@ if __name__ == "__main__":
                 label = int(file_name.split('_')[0]) - 1
                 print '[Train]', file_name, label
                 if use_valid and (file_name.split('_')[1] == '0009.jpg' or file_name.split('_')[1] == '0010.jpg'):
-                    aug_data = data_augment(data, 4)
+                    aug_data = data_augment(data, crop_num)
                     test_data.extend(aug_data)
                     test_label.extend([label] * len(aug_data))
                 else:
-                    aug_data = data_augment(data, 4)
+                    aug_data = data_augment(data, crop_num)
                     train_data.extend(aug_data)
                     train_label.extend([label] * len(aug_data))
 
@@ -74,7 +76,7 @@ if __name__ == "__main__":
         for file_name in os.listdir(test_dir):
             if file_name.endswith("jpg"):
                 data = cv2.imread(test_dir + '/' + file_name)
-                label = 0
+                label = int(file_name.split('_')[1].split('.')[0]) - 1
                 print '[Test]', file_name
                 aug_data = data_augment(data, crop_num)
                 test_data.extend(aug_data)
@@ -93,14 +95,16 @@ if __name__ == "__main__":
         for i in range(len(test_data)):
             fc7 = sess.run([alexnet.fc7], feed_dict={alexnet.X: np.array(test_data[i]).reshape([1, 227, 227, 3])})
             test_fc7.append(fc7[0].reshape([4096]))
-    np.save(result_dir + '/train_fc7.npy', np.array(train_fc7))
-    np.save(result_dir + '/train_label.npy', np.array(train_label))
     if use_valid:
         np.save(result_dir + '/valid_fc7.npy', np.array(test_fc7))
         np.save(result_dir + '/valid_label.npy', np.array(test_label))
+        np.save(result_dir + '/train_fc7.npy', np.array(train_fc7))
+        np.save(result_dir + '/train_label.npy', np.array(train_label))
     else:
         np.save(result_dir + '/test_fc7.npy', np.array(test_fc7))
-        np.save(result_dir + '/test_label.npy', np.array(test_label)) # No use
+        np.save(result_dir + '/test_label.npy', np.array(test_label))
+        np.save(result_dir + '/train_fc7_real.npy', np.array(train_fc7))
+        np.save(result_dir + '/train_label_real.npy', np.array(train_label))
     print('[.] Finish!')
 
             

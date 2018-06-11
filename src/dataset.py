@@ -249,6 +249,61 @@ class ProtoDataSet(BaseDataSet):
         for line in fileinput.input(self.data_dir + "/correct.txt"):
             self.correct_map.append(int(line.split()[1]) - 1)
 
+class TestProtoDataSet(BaseDataSet):
+    def __init__(self, 
+        data_dir, 
+        test_way=None, test_query=None, test_shot=None):
+
+        assert(test_query == 8)
+
+        self.data_dir = data_dir
+        self.test_way = test_way
+        self.test_query = test_query
+        self.test_shot = test_shot
+
+        print("[Dataset] Loading test data...")
+        self.test_label_set = [[] for i in range(50)]
+        self.test_total_classes = 50
+        assert(50 % self.test_way == 0)
+        self.test_class_index = 0 - self.test_way
+        self.test_cur_index = 0 - self.test_way * self.test_query
+        self.load_test_data()
+
+        print("Finish loading!")
+
+    def load_test_data(self):
+        self.train_fc7 = np.load(self.data_dir + '/train_fc7_real.npy')
+        self.test_fc7 = np.load(self.data_dir + '/test_fc7.npy')
+        self.train_label = np.load(self.data_dir + '/train_label_real.npy').tolist()
+        self.test_label = np.load(self.data_dir + '/test_label.npy').tolist()
+
+        for i, val in enumerate(self.train_label):
+            self.test_label_set[val].append(i)
+        self.test_batch_num = self.test_fc7.shape[0] / (self.test_query * self.test_way)
+        assert(self.test_fc7.shape[0] % (self.test_query * self.test_way) == 0)
+
+    def next_test_batch(self):
+        self.test_cur_index = (self.test_cur_index + self.test_way * self.test_query) % self.test_fc7.shape[0]
+
+    def repeat_test_batch(self, candidates):
+        result_shot = [[] for i in range(self.test_way)]
+        for i, candidate in enumerate(candidates):
+            goal_set = self.test_label_set[candidate]
+            shot_samples = random.sample(range(len(goal_set)), self.test_shot)
+            for j in shot_samples:
+                result_shot[i].append(self.train_fc7[goal_set[j]])
+                # print j, self.train_fc7[goal_set[j]]
+
+        result_query = [[] for i in range(self.test_way)]
+        result_label = [[] for i in range(self.test_way)]
+        cur_index = self.test_cur_index
+        for i in range(self.test_way):
+            for j in range(self.test_query):
+                result_query[i].append(self.test_fc7[cur_index])
+                result_label[i].append(self.test_label[cur_index])
+                cur_index = (cur_index + 1) % self.test_fc7.shape[0]
+        return np.array(result_shot), np.array(result_query), np.array(result_label)
+
 if __name__ == "__main__":
     DATA_SET = DataSet("../data/train_augment", 2, 50, 227)
     for i in range(10):

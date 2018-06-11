@@ -10,7 +10,7 @@ import tensorflow as tf
 import numpy as np
 from ops import *
 from utils import *
-from dataset import ProtoDataSet
+from dataset import ProtoDataSet, TestProtoDataSet
 from collections import Counter
 
 class ProtoNet(object):
@@ -42,7 +42,7 @@ class ProtoNet(object):
 
         # parameters
         self.input_dim = 4096
-        self.output_dim = 1024
+        self.output_dim = 2048
 
         # train
         print '! learning_rate:', learning_rate
@@ -50,18 +50,18 @@ class ProtoNet(object):
 
     def encoder(self, x, is_training=True, reuse=False):
         with tf.variable_scope("encoder", reuse=reuse):
-            linear1 = tf.nn.relu(bn(linear(x, 2048, scope='fc1'), is_training=is_training, scope='bn1'))
-            if is_training:
-                keep_prob = 0.6
-            else:
-                keep_prob = 1.0
-            drop1 = tf.nn.dropout(linear1, keep_prob=keep_prob)
+            # linear1 = tf.nn.relu(bn(linear(x, 2048, scope='fc1'), is_training=is_training, scope='bn1'))
+            # if is_training:
+            #     keep_prob = 0.6
+            # else:
+            #     keep_prob = 1.0
+            # drop1 = tf.nn.dropout(linear1, keep_prob=keep_prob)
             # linear2 = tf.nn.relu(bn(linear(linear1, 1024, scope='fc2'), is_training=is_training, scope='bn2'))            
             # drop2 = tf.nn.dropout(linear2, keep_prob=0.6)
             # net3 = tf.nn.relu(bn(linear(net2, 2048, scope='fc3'), is_training=is_training, scope='bn3'))
             # net4 = tf.nn.relu(bn(linear(net3, 1024, scope='fc4'), is_training=is_training, scope='bn4'))
             # net5 = tf.nn.relu(bn(linear(net4, 512, scope='fc5'), is_training=is_training, scope='bn5'))
-            out = bn(linear(drop1, self.output_dim, scope='fc6'), is_training=is_training, scope='bn6')
+            out = bn(linear(x, self.output_dim, scope='fc6'), is_training=is_training, scope='bn6')
             # tf.summary.histogram('gradient5', tf.gradients(out, net5))
         # self.writer.histogram('bn6', out)
         return out
@@ -153,10 +153,7 @@ class ProtoNet(object):
         # loop for epoch
         start_time = time.time()
         for epoch in range(start_epoch, self.epoch):
-            if self.epoch < 100:
-                lr = self.init_learning_rate
-            else:
-                lr = self.init_learning_rate * 0.1
+            lr = self.init_learning_rate
             support_set, query_set, labels = self.data.next_batch()
 
             # update network
@@ -183,8 +180,11 @@ class ProtoNet(object):
             if epoch > 0 and epoch % 20 == 0:
                 self.test(epoch)
 
+            if epoch % 10 == 0:
+                self.save(self.checkpoint_dir, self.epoch)
+
         # save model for final step
-        self.save(self.checkpoint_dir, self.epoch)
+        # self.save(self.checkpoint_dir, self.epoch)
 
     def get_result(self, results):
         summary = np.zeros([self.test_way, self.test_query, self.test_way])
@@ -204,6 +204,8 @@ class ProtoNet(object):
         return candidate
 
     def test(self, epoch):
+        dup = 8
+
         repeat_n = 5
         test_fc7 = self.data.test_fc7
         test_label = self.data.test_label
@@ -215,57 +217,67 @@ class ProtoNet(object):
             candidates = range(50)
             query_set = np.tile(test_fc7[row].reshape([1, 1, test_fc7.shape[1]]), (self.test_way, self.test_query, 1))
             
-            # First round
-            candidate_2 = []
-            for i in range(0, len(candidates), self.test_way):
-                round_candidate = candidates[i : i + self.test_way]
-                batch_result = []
-                for repeats in range(repeat_n):
-                    support_set, _, _ = self.data.repeat_test_batch(round_candidate)
-                    test_log_p = self.sess.run([self.test_log_p],
-                        feed_dict={self.support_set: support_set, self.query_set: query_set})
-                    batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
-                for idx in self.candidate_next_round(batch_result, 4):
-                    candidate_2.append(round_candidate[idx])
-            # print 'condidate_2', candidate_2
+            # # First round
+            # candidate_2 = []
+            # for i in range(0, len(candidates), self.test_way):
+            #     round_candidate = candidates[i : i + self.test_way]
+            #     batch_result = []
+            #     for repeats in range(repeat_n):
+            #         support_set, _, _ = self.data.repeat_test_batch(round_candidate)
+            #         test_log_p = self.sess.run([self.test_log_p],
+            #             feed_dict={self.support_set: support_set, self.query_set: query_set})
+            #         batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
+            #     for idx in self.candidate_next_round(batch_result, 4):
+            #         candidate_2.append(round_candidate[idx])
+            # # print 'condidate_2', candidate_2
 
-            # Second round
-            candidate_3 = []
-            for i in range(0, len(candidate_2), self.test_way):
-                round_candidate = candidate_2[i : i + self.test_way]
-                # print round_candidate
-                batch_result = []
-                for repeats in range(repeat_n):
-                    support_set, _, _ = self.data.repeat_test_batch(round_candidate)
-                    # print support_set
-                    test_log_p = self.sess.run([self.test_log_p],
-                        feed_dict={self.support_set: support_set, self.query_set: query_set})
-                    batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
-                for idx in self.candidate_next_round(batch_result, 5):
-                    candidate_3.append(round_candidate[idx])
-            # print 'candidate_3', candidate_3
+            # # Second round
+            # candidate_3 = []
+            # for i in range(0, len(candidate_2), self.test_way):
+            #     round_candidate = candidate_2[i : i + self.test_way]
+            #     # print round_candidate
+            #     batch_result = []
+            #     for repeats in range(repeat_n):
+            #         support_set, _, _ = self.data.repeat_test_batch(round_candidate)
+            #         # print support_set
+            #         test_log_p = self.sess.run([self.test_log_p],
+            #             feed_dict={self.support_set: support_set, self.query_set: query_set})
+            #         batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
+            #     for idx in self.candidate_next_round(batch_result, 5):
+            #         candidate_3.append(round_candidate[idx])
+            # # print 'candidate_3', candidate_3
 
-            # Final round
-            # print candidate_3
-            # round_candidate = candidate_3[0 : self.test_way]
-            # candidate_4 = candidate_3[self.test_way : ]
-            batch_result = []
-            for repeats in range(repeat_n):
-                support_set, _, _ = self.data.repeat_test_batch(candidate_3)
+            # # Final round
+            # # print candidate_3
+            # # round_candidate = candidate_3[0 : self.test_way]
+            # # candidate_4 = candidate_3[self.test_way : ]
+            # batch_result = []
+            # for repeats in range(repeat_n):
+            #     support_set, _, _ = self.data.repeat_test_batch(candidate_3)
+            #     test_log_p = self.sess.run([self.test_log_p],
+            #         feed_dict={self.support_set: support_set, self.query_set: query_set})
+            #     batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
+            # result = candidate_3[self.candidate_next_round(batch_result, 1)[0]]
+            # print result, test_label[row]
+            if row % dup == 0:
+                batch_result = []
+            for repeat in range(repeat_n):
+                support_set, _, _ = self.data.repeat_test_batch(candidates)
                 test_log_p = self.sess.run([self.test_log_p],
                     feed_dict={self.support_set: support_set, self.query_set: query_set})
                 batch_result.append(np.argmax(test_log_p[0][0, 0, :]))
-            result = candidate_3[self.candidate_next_round(batch_result, 1)[0]]
-            # print result, test_label[row]
-            pred.append(result)
+            if row % dup == dup - 1:
+                result = candidates[self.candidate_next_round(batch_result, 1)[0]]
+                print result
+                pred.append(result)
 
         sum_cnt = test_fc7.shape[0] / 8
-        correct_cnt = 0
-        for i in range(0, test_fc7.shape[0], 8):
-            print pred[i: i+8]
-            result = self.candidate_next_round(pred[i : i + 8], 1)[0]
-            if result == test_label[i]:
-                correct_cnt += 1
+        correct_cnt = np.sum(test_label[::8] == np.array(pred))
+        # for i in range(0, test_fc7.shape[0], 8):
+        #     print pred[i: i+8]
+        #     result = self.candidate_next_round(pred[i : i + 8], 1)[0]
+        #     if result == test_label[i]:
+        #         correct_cnt += 1
 
         print("[Test Set Summary] Epoch: [%2d] acc: %.8f" \
             % (epoch, 1.0 * correct_cnt / sum_cnt))
@@ -281,12 +293,28 @@ class ProtoNet(object):
             print(" [*] Load SUCCESS")
         else:
             print(" [!] Load failed...")
-        support_set, query_set, labels = self.test_set.next_batch()
-        test_loss, test_acc = self.sess.run([self.test_loss, self.test_acc], 
-            feed_dict={self.support_set: support_set, self.query_set: query_set, self.label: labels})
-        print test_loss
-        print test_acc
-        print "============" 
+
+        dataset = TestProtoDataSet('../data', 
+            self.test_way, self.test_query, self.test_shot)
+        label = np.zeros([2500])
+        for batch in range(dataset.test_batch_num):
+            batch_result = []
+            for repeat in range(5):
+                support_set, query_set, labels = dataset.repeat_test_batch(range(50))
+                labels = labels.reshape([-1])
+                test_log_p = self.sess.run([self.test_log_p],
+                    feed_dict={self.support_set: support_set, self.query_set: query_set})
+                batch_result.append(np.argmax(test_log_p[0], axis=-1).reshape([-1]))
+            for i in range(0, batch_result[0].shape[0], 8):
+                l = []
+                for repeat in range(5):
+                    l.extend(batch_result[repeat][i : i + 8].tolist())
+                print l
+                counter = Counter(l).most_common(1)
+                label[labels[i]] = counter[0][0] + 1
+        
+
+        print "[.] Predict finish!" 
     
     @property
     def model_dir(self):
