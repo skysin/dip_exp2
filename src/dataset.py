@@ -8,6 +8,7 @@ import tensorflow as tf
 
 from alexnet import AlexNet
 from data_augmentation import *
+from sklearn.decomposition import PCA
 
 class BaseDataSet(object):
     def __init__(self, data_dir, batch_size, label_dim, data_size=227, max_size=-1):
@@ -104,9 +105,10 @@ class ProtoDataSet(BaseDataSet):
         data_dir, 
         way, query, shot, 
         test_way=None, test_query=None, test_shot=None,
-        phase="TRAIN", valid=True, gen_test=False):
+        regen=True, pca=0):
 
-        print("Data path: " + data_dir)
+        assert(query == 8)
+        assert(test_query == 8)
 
         self.data_dir = data_dir
         self.way = way
@@ -115,107 +117,95 @@ class ProtoDataSet(BaseDataSet):
         self.test_way = test_way
         self.test_query = test_query
         self.test_shot = test_shot
-        self.valid = valid
-        assert(phase == 'TRAIN' or phase == 'TEST')
-        self.phase = phase
-        if self.phase == 'TRAIN' and valid:
-            assert(test_way != None and test_query != None and test_shot != None)
 
-        if self.phase == 'TRAIN':
-            self.correct_map = []
-            self.label_set = [[] for i in range(1000)]
-            self.classes_list = [i for i in range(1000)]
-            self.total_classes = 1000
-            self.cur_index = 0
-            self.init_correct_map()
-            self.init_label_set()
-            if valid:
-                self.valid_classes_list = self.classes_list[:self.test_way]
-                self.classes_list = self.classes_list[self.test_way:]
-                #print self.valid_classes_list
-                self.total_classes -= self.test_way
-                self.set_valid_data()
-            self.shuffle_classes_list()
-        else:
-            print("Loading test data...")
-            if gen_test or not os.path.exists(data_dir + '/train_fc7.npy') \
-                or not os.path.exists(data_dir + '/valid_fc7.npy'):
-                self.gen_test_data('/training')
-            self.label_set = [[] for i in range(50)]
-            self.classes_list = [i for i in range(50)]
-            self.total_classes = 50
-            self.cur_index = 0
-            self.load_test_data()
-            print("Finish loading!")
+        if regen and pca != 0:
+            self.gen_data(pca)
 
-    def gen_test_data(self, data_path):
-        print("Generate fc7 from testing data...")
-        data_path = self.data_dir + data_path
-        aug_data_path = self.data_dir + '/train_augment'
+        print("[Dataset] Loading training set...")
+        self.correct_map = []
+        self.label_set = [[] for i in range(1000)]
+        self.classes_list = [i for i in range(1000)]
+        self.total_classes = 1000
+        self.cur_index = 0
+        self.init_correct_map()
+        self.init_label_set(pca = (pca != 0))
+        self.shuffle_classes_list()
 
-        test_data = BaseDataSet(data_path, 500, 50)
-        test_data.image_list = sorted(test_data.image_list)
-        test_data_set = []
-        test_label_set = []
-        for image_path in test_data.image_list:
-            data, label = test_data.read_image(image_path)
-            if '0009.jpg' in image_path or '0010.jpg' in image_path:
-                print 'test:', image_path
-                test_data_set.append(data)
-                test_label_set.append(int(label) - 1)
+        print("[Dataset] Loading test data...")
+        self.test_label_set = [[] for i in range(50)]
+        self.test_total_classes = 50
+        self.test_class_batch = 50 / self.test_way
+        assert(50 % self.test_way == 0)
+        self.test_class_index = 0 - self.test_way
+        self.test_cur_index = 0 - self.test_way * self.test_query
+        self.load_test_data(pca = (pca != 0))
 
-        train_data = BaseDataSet(aug_data_path, 500, 50)
-        train_data.image_list = sorted(train_data.image_list)
-        train_data_set = []
-        train_label_set = []
-        for image_path in train_data.image_list:
-            print 'Train:', image_path
-            data, label = train_data.read_image(image_path)
-            train_data_set.append(data)
-            train_label_set.append(int(label) - 1)
+        print("Finish loading!")
 
-        train_fc7 = []
-        test_fc7 = []
-        with tf.Session(config=tf.ConfigProto(allow_soft_placement=True)) as sess:
-            inputs = tf.placeholder(tf.float32, [1, 227, 227, 3], name="input_image")
-            alexnet = AlexNet(inputs, keep_prob=1.0, num_classes=1000, skip_layer=[])
-            tf.global_variables_initializer().run()
-            alexnet.load_initial_weights(sess)
-            for i in range(len(train_data_set)):
-                fc7 = sess.run([alexnet.fc7], feed_dict={alexnet.X: np.array(train_data_set[i]).reshape([1, 227, 227, 3])})
-                train_fc7.append(fc7[0].reshape([4096]))
-            for i in range(len(test_data_set)):
-                fc7 = sess.run([alexnet.fc7], feed_dict={alexnet.X: np.array(test_data_set[i]).reshape([1, 227, 227, 3])})
-                test_fc7.append(fc7[0].reshape([4096]))
-        np.save(self.data_dir + '/train_fc7.npy', np.array(train_fc7))
-        np.save(self.data_dir + '/valid_fc7.npy', np.array(test_fc7))
-        np.save(self.data_dir + '/train_label.npy', np.array(train_label_set))
-        np.save(self.data_dir + '/valid_label.npy', np.array(test_label_set))
-        print('Finish generating!')
+    def gen_data(self, dim):
+        print("[Dataset] Regenerate fc7 with compression...")
+        print("[Dataset] PCA: dim = " + str(dim))
 
-    def load_test_data(self):
-        con = 32
+        fc7 = np.load(self.data_dir + '/fc7.npy')
         train_fc7 = np.load(self.data_dir + '/train_fc7.npy')
         test_fc7 = np.load(self.data_dir + '/valid_fc7.npy')
-        train_label = np.load(self.data_dir + '/train_label.npy')
-        test_label = np.load(self.data_dir + '/valid_label.npy')
-        self.test_support_set = np.zeros([self.way, self.shot, 4096])
-        self.test_query_set = np.zeros([self.way, self.query, 4096])
-        self.test_label = np.zeros([self.way, self.query])
-        for way in range(self.way):
-            for shot in range(self.shot):
-                assert train_label[way * con + shot % con] == way
-                self.test_support_set[way, shot, :] = train_fc7[way * con + shot % con, :]
-        for way in range(self.way):
-            for query in range(self.query):
-                self.test_query_set[way, query, :] = test_fc7[way * 2 + query % 2, :]
-                self.test_label[way, query] = test_label[way * 2 + query % 2]
-                # print test_label[way * self.query + query]
+
+        data = np.concatenate((fc7, train_fc7, test_fc7), axis=0)
+        pca = PCA(n_components=dim, whiten=True)
+        result = pca.fit_transform(data)
+
+        fc7 = result[ : fc7.shape[0]]
+        train_fc7 = result[fc7.shape[0] : fc7.shape[0] + train_fc7.shape[0]]
+        test_fc7 = result[fc7.shape[0] + train_fc7.shape[0] : ]
+        np.save(self.data_dir + '/fc7_pca.npy', fc7)
+        np.save(self.data_dir + '/train_fc7_pca.npy', train_fc7)
+        np.save(self.data_dir + '/valid_fc7_pca.npy', test_fc7)
+
+        print("[Dataset] PCA compression finish!")
+        
+
+    def load_test_data(self, pca):
+        if pca:
+            self.train_fc7 = np.load(self.data_dir + '/train_fc7_pca.npy')
+            self.test_fc7 = np.load(self.data_dir + '/valid_fc7_pca.npy')
+            self.train_label = np.load(self.data_dir + '/train_label.npy').tolist()
+            self.test_label = np.load(self.data_dir + '/valid_label.npy').tolist()
+        else:
+            self.train_fc7 = np.load(self.data_dir + '/train_fc7.npy')
+            self.test_fc7 = np.load(self.data_dir + '/valid_fc7.npy')
+            self.train_label = np.load(self.data_dir + '/train_label.npy').tolist()
+            self.test_label = np.load(self.data_dir + '/valid_label.npy').tolist()
+
+        for i, val in enumerate(self.train_label):
+            self.test_label_set[val].append(i)
+        self.test_batch_num = 16 / self.test_query
+        assert(self.test_fc7.shape[0] % (self.test_query * self.test_way) == 0)
+
+    def next_test_class(self):
+        self.test_class_index = (self.test_class_index + self.test_way) % 50
+
+    def next_test_batch(self):
+        self.test_cur_index = (self.test_cur_index + self.test_way * self.test_query) % self.test_fc7.shape[0]
+
+    def repeat_test_batch(self):
+        result_shot = [[] for i in range(self.test_way)]
+        for i in range(self.test_class_index, self.test_class_index + self.test_way):
+            goal_set = self.test_label_set[i]
+            shot_samples = random.sample(range(len(goal_set)), self.test_shot)
+            for j in shot_samples:
+                result_shot[i - self.test_class_index].append(self.train_fc7[goal_set[j]])
+
+        result_query = [[] for i in range(self.test_way)]
+        result_label = [[] for i in range(self.test_way)]
+        cur_index = self.test_cur_index
+        for i in range(self.test_way):
+            for j in range(self.test_query):
+                result_query[i].append(self.test_fc7[cur_index])
+                result_label[i].append(self.test_label[cur_index] - self.test_class_index)
+                cur_index = (cur_index + 1) % self.test_fc7.shape[0]
+        return np.array(result_shot), np.array(result_query), np.array(result_label)
 
     def next_batch(self):
-        if self.phase == 'TEST':
-            return self.test_support_set, self.test_query_set, self.test_label
-
         self.end_index = min(
             [self.cur_index + self.way, self.total_classes])
         result_shot = [[] for i in range(self.way)]
@@ -246,9 +236,12 @@ class ProtoDataSet(BaseDataSet):
         # shape(way,shot,4096), shape(way,query,4096), shape(way,)
         return np.array(result_shot), np.array(result_query), np.array(array_label)
 
-    def init_label_set(self):
+    def init_label_set(self, pca):
         labels = np.load(self.data_dir + '/label.npy').tolist()
-        self.fc7 = np.load(self.data_dir + '/fc7.npy')
+        if pca:
+            self.fc7 = np.load(self.data_dir + '/fc7_pca.npy')
+        else:
+            self.fc7 = np.load(self.data_dir + '/fc7.npy')
         for i, val in enumerate(labels):
             self.label_set[self.correct_map[val - 1]].append(i)
 
@@ -258,34 +251,6 @@ class ProtoDataSet(BaseDataSet):
     def init_correct_map(self):
         for line in fileinput.input(self.data_dir + "/correct.txt"):
             self.correct_map.append(int(line.split()[1]) - 1)
-
-    def set_valid_data(self):
-        result_shot = [[] for i in range(self.test_way)]
-        array_label = []
-        result_query = [[] for i in range(self.test_way)]
-        total_num = self.test_shot + self.test_query
-        for i in range(self.test_way):
-            goal_set = self.label_set[self.valid_classes_list[i]]
-            temp_total_num = total_num
-            if temp_total_num > len(goal_set):
-                temp_total_num = len(goal_set)
-            array_label.append([i] * self.test_query)
-            query_samples = []
-            shot_samples = range(temp_total_num)
-            for j in range(self.test_query):
-                query_samples.append(shot_samples.pop())
-            for j in shot_samples:
-                result_shot[i].append(self.fc7[goal_set[j]])
-            for j in query_samples:
-                result_query[i].append(self.fc7[goal_set[j]])
-        # shape(way,shot,4096), shape(way,query,4096), shape(way,)
-        #print np.array(result_shot).shape, np.array(result_query).shape, np.array(array_label).shape
-        self.test_support_set = np.array(result_shot)
-        self.test_query_set = np.array(result_query)
-        self.test_label = np.array(array_label)
-
-    def get_valid_data(self):
-        return self.test_support_set, self.test_query_set, self.test_label
 
 if __name__ == "__main__":
     DATA_SET = DataSet("../data/train_augment", 2, 50, 227)
